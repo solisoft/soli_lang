@@ -207,6 +207,7 @@ get("/docs/builtins/mailer", "docs#builtins_mailer")
 get("/docs/builtins/markdown", "docs#builtins_markdown")
 get("/docs/builtins/image", "docs#builtins_image")
 get("/docs/builtins/file", "docs#builtins_file")
+get("/docs/builtins/bytes", "docs#builtins_bytes")
 get("/docs/builtins/spreadsheet", "docs#builtins_spreadsheet")
 get("/docs/builtins/websocket", "docs#builtins_websocket")
 

@@ -139,7 +139,7 @@ class MicrosoftOauth
 
   # The claims of the id_token, held to this app and to a tenant it names.
   static def identity(id_token)
-    decoded = jwt_decode_unsafe(id_token.to_s)
+    decoded = JWT.decode_unsafe(id_token.to_s)
     throw "Microsoft sent no readable id_token" if decoded["error"]
 
     claims = decoded["claims"]

@@ -3,6 +3,8 @@
 Native WebSocket support with Phoenix-inspired presence tracking — for chat,
 notifications, dashboards and live collaboration.
 
+`Channel` is the class for the room. `Channel.join`, `Channel.leave`, `Channel.send`, `Channel.close`, `Channel.broadcast`, `Channel.broadcast_all` (`ws_broadcast`), `Channel.broadcast_room`, `Channel.clients`, `Channel.clients_in`, `Channel.count`, `Channel.list_presence`, `Channel.presence_count`, `Channel.get_presence`, `Channel.subscribe` (`sse_subscribe`), `Channel.sse_broadcast`, `Channel.subscribers`. `sse` and `stream` stay response helpers, not methods. The old names still run, and each warns once per process. `Model.broadcast` is the model method and is a different call.
+
 ## Quick start
 
 Three pieces: a route, a handler, and the browser's own `WebSocket`.
@@ -226,30 +228,30 @@ the WebSocket runtime without being a handler itself.
 
 | Call | Answers | What it does |
 |---|---|---|
-| `ws_send(connection_id, message)` | `nil` | one specific connection — on another instance too, through the realtime bus |
-| `ws_broadcast(message, opts?)` | `nil` | every connected client |
-| `ws_broadcast_room(channel, message, opts?)` | `nil` | everyone subscribed to `channel` |
-| `broadcast(channel, payload, opts?)` | SSE subscriber count | **both** the WS channel and the SSE topic of that name |
-| `ws_close(connection_id, reason)` | `nil` | closes a connection, with a reason — on another instance too |
-| `ws_join(channel)` / `ws_leave(channel)` | `nil` | subscribe / unsubscribe the connection whose handler is running |
-| `ws_clients()` | `Array<String>` | the id of every connection on this process |
-| `ws_clients_in(channel)` | `Array<String>` | ids on this process subscribed to `channel` |
-| `ws_count(opts?)` | `Int` | active connections on this process; `{"cluster": true}` adds the other instances' |
-| `ws_list_presence(channel)` | `Array<Hash>` | every user in the channel, with metadata, across instances |
-| `ws_presence_count(channel)` | `Int` | unique **users**, not connections |
-| `ws_get_presence(channel, user_id)` | `Hash \| nil` | one user's presence |
+| `Channel.send(connection_id, message)` | `nil` | one specific connection — on another instance too, through the realtime bus |
+| `Channel.broadcast_all(message, opts?)` | `nil` | every connected client |
+| `Channel.broadcast_room(channel, message, opts?)` | `nil` | everyone subscribed to `channel` |
+| `Channel.broadcast(channel, payload, opts?)` | SSE subscriber count | **both** the WS channel and the SSE topic of that name |
+| `Channel.close(connection_id, reason)` | `nil` | closes a connection, with a reason — on another instance too |
+| `Channel.join(channel)` / `Channel.leave(channel)` | `nil` | subscribe / unsubscribe the connection whose handler is running |
+| `Channel.clients` | `Array<String>` | the id of every connection on this process |
+| `Channel.clients_in(channel)` | `Array<String>` | ids on this process subscribed to `channel` |
+| `Channel.count(opts?)` | `Int` | active connections on this process; `{"cluster": true}` adds the other instances' |
+| `Channel.list_presence(channel)` | `Array<Hash>` | every user in the channel, with metadata, across instances |
+| `Channel.presence_count(channel)` | `Int` | unique **users**, not connections |
+| `Channel.get_presence(channel, user_id)` | `Hash \| nil` | one user's presence |
 | `realtime_bus()` | `Hash` | which bus carries broadcasts to other processes, and how it is doing |
 
-`ws_join` and `ws_leave` act on the connection whose event the handler is
-handling, and return once the join has landed — a `ws_clients_in` or a
+`Channel.join` and `Channel.leave` act on the connection whose event the handler is
+handling, and return once the join has landed — a `Channel.clients_in` or a
 broadcast on the next line already sees it. Called anywhere else (an HTTP
 action, a job) they raise; return `{"join": channel}` from the handler instead.
 
 ```soli
 def handle(event)
   if event["message"] == "join"
-    ws_join("room:lobby")
-    return {"send": "#{ws_clients_in("room:lobby").length} here"}
+    Channel.join("room:lobby")
+    return {"send": "#{Channel.clients_in("room:lobby").length} here"}
   end
   {}
 end
@@ -260,17 +262,17 @@ standalone `soli worker`. There are no local sockets there: the senders skip
 the local delivery (and still publish to a [realtime bus](#running-more-than-one-instance)
 when one is configured), the readers answer `[]`, `0` or `nil`.
 
-`broadcast` is the one to reach for when a page might be on either transport:
+`Channel.broadcast` is the one to reach for when a page might be on either transport:
 non-string payloads serialize to JSON, and `Model.broadcast(payload, opts?)` is
 the shortcut that publishes to a model's own collection channel.
 
 ```soli
-broadcast("room:lobby", { "event": "joined", "user": name })
+Channel.broadcast("room:lobby", { "event": "joined", "user": name })
 ```
 
 ## Running more than one instance
 
-By default every room lives in one process: a `broadcast` reaches the sockets
+By default every room lives in one process: a `Channel.broadcast` reaches the sockets
 and SSE streams of the process that made the call, and nothing else. Run two
 `soli serve` instances behind a load balancer — or broadcast from a job in the
 standalone `soli worker` — and the other process's clients hear nothing.
@@ -294,25 +296,25 @@ SOLIKV_RESP_PORT=6380
 SOLIKV_TOKEN=…
 ```
 
-With a bus, `broadcast`, `Model.broadcast`, `ws_broadcast`,
-`ws_broadcast_room`, `sse_broadcast` and the handler `broadcast`,
+With a bus, `Channel.broadcast`, `Model.broadcast`, `Channel.broadcast_all`,
+`Channel.broadcast_room`, `Channel.sse_broadcast` and the handler `broadcast`,
 `broadcast_room` and `broadcast_channel` actions reach every instance. Each call
 delivers to its own process first, then hands the message to a background
 publisher and returns — the caller never waits on the bus. A process
 ignores its own messages, and never re-publishes what it received.
 
-- **Opt in per call to stay home:** `broadcast(channel, payload, {"local": true})`
-  (also on `Model.broadcast`, `ws_broadcast`, `ws_broadcast_room`).
+- **Opt in per call to stay home:** `Channel.broadcast(channel, payload, {"local": true})`
+  (also on `Model.broadcast`, `Channel.broadcast_all`, `Channel.broadcast_room`).
 - **Fire and forget.** The changefeed drops events for a lagging subscriber and
   does not cross SoliDB cluster nodes; a `solikv` subscriber that is
   reconnecting misses what was published meanwhile. A message can be lost — the
   contract of a Phoenix PubSub broadcast. Keep anything that must not be missed in the
   database, and let the client re-read it.
-- **Targeted sends cross too.** `ws_send(id, …)` and `ws_close(id, …)` for a
+- **Targeted sends cross too.** `Channel.send(id, …)` and `Channel.close(id, …)` for a
   connection another instance holds go over the bus, and that instance
   delivers them — from an action, a job in `soli worker`, anywhere.
 - **Presence spans instances.** `track` on one instance shows up in
-  `ws_list_presence`, `ws_presence_count` and `ws_get_presence` on all of
+  `Channel.list_presence`, `Channel.presence_count` and `Channel.get_presence` on all of
   them, and in their clients' `presence_diff`s. A join goes out for a user's
   first connection anywhere, a leave for the last. Each instance owns its own
   connections' metas, announces every change, and restates its whole presence
@@ -322,10 +324,10 @@ ignores its own messages, and never re-publishes what it received.
   leaves go out then (expect 30–40 s). Eventually consistent, like
   Phoenix.Presence. `phx_ref`s carry a random per-process tag
   (`"9f2c41ab.12"`), never a host name.
-- **Counts are local unless asked.** `broadcast` returns the SSE subscribers
-  *of this process*; `ws_clients` and `ws_clients_in` list this process's
-  connections. `ws_count({"cluster": true})` adds what the other instances
-  reported at their last heartbeat (up to 10 s old); `ws_count()` stays
+- **Counts are local unless asked.** `Channel.broadcast` returns the SSE subscribers
+  *of this process*; `Channel.clients` and `Channel.clients_in` list this process's
+  connections. `Channel.count({"cluster": true})` adds what the other instances
+  reported at their last heartbeat (up to 10 s old); `Channel.count` stays
   this process's.
 - **On `solidb`, every broadcast is a database write.** For a very chatty
   room, prefer `solikv`, keep the traffic local with `{"local": true}`, or pin
@@ -341,7 +343,7 @@ ignores its own messages, and never re-publishes what it received.
 - Messages over 256 KB are delivered locally but not published.
 - `soli worker` publishes but does not subscribe. A script (`soli app.sl`)
   publishes from a background thread: one that exits right after its
-  `broadcast` can exit before the message is written.
+  `Channel.broadcast` can exit before the message is written.
 
 `realtime_bus()` reports the state of the bus:
 
@@ -379,7 +381,7 @@ on the hot path.
 
 ## See also
 
-- [`streaming.md`](streaming.md) — SSE, chunked bodies, and `broadcast` across both transports
+- [`streaming.md`](streaming.md) — SSE, chunked bodies, and `Channel.broadcast` across both transports
 - [`deploy.md`](deploy.md) — running several instances
 - [`liveview.md`](liveview.md) — reactive UI over the same machinery
 - Rendered page: `/docs/core-concepts/websockets`

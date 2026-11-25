@@ -10,7 +10,7 @@
             <span class="bg-gradient-to-r from-teal-300 to-emerald-400 bg-clip-text text-transparent">PDF Playground</span>
         </h1>
         <p class="text-lg text-gray-300 leading-7">
-            Edit the layout <strong>template</strong> and the <strong>data</strong> on the left; the PDF re-renders on the right as you type. It's the real engine &mdash; the same <code class="text-teal-300">pdf_render</code> builtin running server-side. The <strong>Markdown</strong> sample runs <code class="text-teal-300">pdf_from_markdown</code> instead, and <strong>Accessible</strong> shows tagged output.
+            Edit the layout <strong>template</strong> and the <strong>data</strong> on the left; the PDF re-renders on the right as you type. It's the real engine &mdash; the same <code class="text-teal-300">PDF.render</code> builtin running server-side. The <strong>Markdown</strong> sample runs <code class="text-teal-300">PDF.from_markdown</code> instead, and <strong>Accessible</strong> shows tagged output.
         </p>
     </div>
 
@@ -106,7 +106,7 @@
     var tpl = val("template");
     var body = new URLSearchParams();
     // The Markdown sample holds Markdown (not JSON) in the template editor —
-    // send it to the pdf_from_markdown path. Everything else is a JSON template.
+    // send it to the PDF.from_markdown path. Everything else is a JSON template.
     var isJson = false;
     try { JSON.parse(tpl); isJson = true; } catch (e) {}
     if (isJson) {

@@ -243,7 +243,7 @@ appended under its own marker.
 
 ## Sign-in time (`auth_time`)
 
-A provider sign-in records `session_set("auth_time", DateTime.utc.to_unix)`
+A provider sign-in records `Session.set("auth_time", DateTime.utc.to_unix)`
 (`OauthSso.sign_in`; linking does not, the session was already signed in). An
 app that is also an [OpenID Connect provider](oidc-provider.md) puts it in its
 id_tokens and checks `max_age` against it.

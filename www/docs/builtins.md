@@ -1365,7 +1365,7 @@ the next bytes, default 120). `to` is a Hash:
   stream), `"openai"` (chat completion chunks: `choices[0].delta.content` up to
   `[DONE]`, `finish_reason`, `usage`), `"sse"` (each event's data) or `"lines"`
   (each line; the default)
-- `topic` (optional) - an `sse_subscribe` topic. Each chunk's new text is
+- `topic` (optional) - an `Channel.subscribe` topic. Each chunk's new text is
   broadcast as a `delta` event, `{"id", "text"}`. At the end comes one
   `done`, `failed` or `cancelled` event, `{"id", "text", "error"?}`
 - `job` (optional) - a job class, enqueued once when the stream ends, failed
@@ -1395,7 +1395,7 @@ class AnswersController < Controller
 
   # GET /chats/:id/stream — the page's EventSource
   def stream(req)
-    sse_subscribe(req, "chat:#{params["id"]}")
+    Channel.subscribe(req, "chat:#{params["id"]}")
   end
 end
 
@@ -2105,7 +2105,7 @@ for the file. PDFs, uploads and attachments travel as base64 in Soli, and
 `Crypto.sha256` would hash the base64 text instead.
 
 ```soli
-pdf = pdf_render(template, data)
+pdf = PDF.render(template, data)
 Crypto.sha256_base64(pdf)          # same as `sha256sum invoice.pdf`
 ```
 
@@ -2231,7 +2231,7 @@ refresh tokens, and any opaque identifier that travels in a URL.
 
 ```soli
 state = Crypto.random_token()
-session_set("oauth_state", state)
+Session.set("oauth_state", state)
 ```
 
 ### Tamper-Evidence (Hash Chains & Merkle Trees)
@@ -2775,7 +2775,7 @@ identity = X509.issue({
   "policies": ["1.3.6.1.4.1.99999.1.1"]       # optional certificatePolicies OIDs
 })
 
-signed = pdf_sign(pdf, {
+signed = PDF.sign(pdf, {
   "cert": identity["cert"], "key": identity["key"],
   "chain": [getenv("SIGNERS_CA_CERT"), root_pem],
   "name": "Adèle Martin"
@@ -3026,11 +3026,13 @@ slug = NanoID.generate(12)
 
 ---
 
-## JWT Functions
+## JWT
 
-### jwt_sign(payload, secret, options?)
+`JWT.sign`, `JWT.verify` and `JWT.decode_unsafe` are the class. `jwt_sign`, `jwt_verify` and `jwt_decode_unsafe` are the same methods under their old names: they still run, and each one warns once per process that it is deprecated. `jwt_decode` stays removed.
 
-Creates a signed JWT token.
+### JWT.sign(payload, secret, options?)
+
+Creates a signed JWT token. `jwt_sign` is the same call and warns once per process.
 
 **Parameters:**
 - `payload` (Hash) - Claims to include in the token
@@ -3054,14 +3056,14 @@ Registered claims come from `options`; everything else in `payload` becomes a cu
 
 **Example:**
 ```soli
-token = jwt_sign(
+token = JWT.sign(
   { "sub": "user123", "role": "admin" },
   getenv("JWT_SECRET"),
   { "expires_in": 3600 }
 )
 
 # An OIDC id_token, signed with a rotatable key
-id_token = jwt_sign(
+id_token = JWT.sign(
   { "sub": user["_key"], "email": user["email"] },
   "",
   {
@@ -3075,9 +3077,9 @@ id_token = jwt_sign(
 )
 ```
 
-### jwt_verify(token, secret, options?)
+### JWT.verify(token, secret, options?)
 
-Verifies and decodes a JWT token. **The verifier — not the token — chooses which algorithm is acceptable**, closing the classic JWT algorithm-confusion attack where an attacker who knew the verifier's RSA public key could sign an HS256 token using the public key bytes as an HMAC secret.
+Deprecated alias of `JWT.verify`. Verifies and decodes a JWT token. **The verifier — not the token — chooses which algorithm is acceptable**, closing the classic JWT algorithm-confusion attack where an attacker who knew the verifier's RSA public key could sign an HS256 token using the public key bytes as an HMAC secret.
 
 **Parameters:**
 - `token` (String) - The JWT token
@@ -3091,7 +3093,7 @@ Verifies and decodes a JWT token. **The verifier — not the token — chooses w
   - `authorized_party` (String) - Your client id, checked against `azp` (OpenID Connect): when the token carries `azp` it must equal this, and a token naming several audiences must carry it. It does not replace `audience`: a token with no `azp` and a single `aud` naming another client passes `authorized_party` alone, so pass both.
   - `leeway` (Int, 0 to 31,536,000) - Clock-skew tolerance in seconds (default 60). It also bounds how far in the future `iat` may be: a token issued later than now + leeway fails with `InvalidIssuedAt`. More than a year (31,536,000) raises: unbounded, a leeway of 10^9 accepted tokens expired decades ago.
 
-Any other option name raises, and so does a value of the wrong type — `{"aud": …}` or `{"iss": …}` (jwt_sign's names) used to be skipped, verifying the token with no audience or issuer check at all; the error now names the option you meant.
+Any other option name raises, and so does a value of the wrong type — `{"aud": …}` or `{"iss": …}` (JWT.sign's names) used to be skipped, verifying the token with no audience or issuer check at all; the error now names the option you meant.
 
 When neither `algorithm` nor `key` is provided, the 2-arg form accepts only HMAC algorithms (`HS256`/`HS384`/`HS512`), matching the back-compat default. A `secret` that is key material — a PEM, an OpenSSH key, or the bare base64 body of a public key or certificate with its armour stripped — raises in that form: anyone holding a public key could forge an HMAC token with it. That check is a heuristic, not a guarantee: key material in another encoding (URL-safe base64, hex DER, a JWK) is not recognized, so pass `algorithm` or `key` whenever the token is not an HMAC one.
 
@@ -3104,7 +3106,7 @@ When neither `algorithm` nor `key` is provided, the 2-arg form accepts only HMAC
 **Example:**
 ```soli
 # 2-arg form: HMAC only.
-result = jwt_verify(token, getenv("JWT_SECRET"))
+result = JWT.verify(token, getenv("JWT_SECRET"))
 if has_key(result, "error")
   println("Invalid token: " + result["message"])
 else
@@ -3112,10 +3114,10 @@ else
 end
 
 # Asymmetric verification: pin the algorithm explicitly.
-result = jwt_verify(token, "", { "algorithm": "RS256", "key": rsa_public_pem })
+result = JWT.verify(token, "", { "algorithm": "RS256", "key": rsa_public_pem })
 
 # Verifying an OIDC id_token: check who issued it and who it was meant for.
-claims = jwt_verify(id_token, "", {
+claims = JWT.verify(id_token, "", {
   "algorithm": "RS256",
   "key": provider_public_pem,
   "issuer": "https://op.example",
@@ -3123,11 +3125,11 @@ claims = jwt_verify(id_token, "", {
 })
 ```
 
-### jwt_decode_unsafe(token)
+### JWT.decode_unsafe(token)
 
-Decode a JWT **without** verifying its signature or expiration. The result is wrapped as `{unverified: true, claims: {...}}` so it cannot be confused with a verified `jwt_verify` result. **Never trust these claims for authentication** — use `jwt_verify(token, secret)` for that.
+Decode a JWT **without** verifying its signature or expiration. The result is wrapped as `{unverified: true, claims: {...}}` so it cannot be confused with a verified `JWT.verify` result. **Never trust these claims for authentication** — use `JWT.verify(token, secret)` for that.
 
-The previous `jwt_decode(token)` returned the same shape as `jwt_verify`, which made `claims["sub"]` a silent auth bypass. It has been removed (SEC-029); calling it now raises a migration error pointing at this function.
+The previous `jwt_decode(token)` returned the same shape as `JWT.verify`, which made `claims["sub"]` a silent auth bypass. It has been removed (SEC-029); calling it now raises a migration error pointing at this function.
 
 **Parameters:**
 - `token` (String) - The JWT token
@@ -3136,7 +3138,7 @@ The previous `jwt_decode(token)` returned the same shape as `jwt_verify`, which 
 
 **Example:**
 ```soli
-let result = jwt_decode_unsafe(token)
+let result = JWT.decode_unsafe(token)
 println(result["claims"]["sub"])  # Inspection only — DO NOT use for auth
 ```
 
@@ -3205,7 +3207,7 @@ let claims = Paseto.verify(token, pair["public"])
 Inspect a token **without** verifying it. The claims are nested under `claims` and
 the result carries `unverified: true`, so `peek["sub"]` is `nil` rather than a
 trusted-looking value — the same shape (and the same reasoning) as
-`jwt_decode_unsafe`.
+`JWT.decode_unsafe`.
 
 ```soli
 let peek = Paseto.decode_unsafe(token)
@@ -3260,12 +3262,12 @@ result = WebAuthn.registration_options({
   "user_id": user._key,
   "user_name": user.email
 })
-session_set("webauthn_challenge", result["challenge"])
+Session.set("webauthn_challenge", result["challenge"])
 render_json(result["options"])
 
 # 2. Verify what navigator.credentials.create() returned (its toJSON())
-challenge = session_get("webauthn_challenge")
-session_delete("webauthn_challenge")
+challenge = Session.get("webauthn_challenge")
+Session.delete("webauthn_challenge")
 record = WebAuthn.verify_registration(req["json"], {
   "challenge": challenge,
   "origins": ["https://example.com"],
@@ -4788,9 +4790,11 @@ end
 
 ## Session Functions
 
+The methods below are the class: `Session.get`, `Session.set`, `Session.delete`, `Session.has`, `Session.destroy`, `Session.regenerate`, `Session.id`. Flash is `Session.flash`, `Session.flash_now` and `Session.flashes`. `session_get`, `session_set`, `flash` and the rest still run, and each warns once per process. See [Sessions](sessions.md).
+
 Session functions manage user session data in web applications.
 
-### session_get(key)
+### Session.get(key)
 
 Gets a value from the current session.
 
@@ -4801,10 +4805,10 @@ Gets a value from the current session.
 
 **Example:**
 ```soli
-user_id = session_get("user_id")
+user_id = Session.get("user_id")
 ```
 
-### session_set(key, value)
+### Session.set(key, value)
 
 Sets a value in the current session.
 
@@ -4816,11 +4820,11 @@ Sets a value in the current session.
 
 **Example:**
 ```soli
-session_set("user_id", 123)
-session_set("cart", [])
+Session.set("user_id", 123)
+Session.set("cart", [])
 ```
 
-### session_delete(key)
+### Session.delete(key)
 
 Removes a value from the session.
 
@@ -4829,7 +4833,7 @@ Removes a value from the session.
 
 **Returns:** Any|null - The removed value
 
-### session_destroy()
+### Session.destroy
 
 Destroys the entire session.
 
@@ -4838,10 +4842,10 @@ Destroys the entire session.
 **Example:**
 ```soli
 # Logout user
-session_destroy()
+Session.destroy
 ```
 
-### session_regenerate()
+### Session.regenerate
 
 Regenerates the session ID (for security after login).
 
@@ -4850,11 +4854,11 @@ Regenerates the session ID (for security after login).
 **Example:**
 ```soli
 # After successful login
-session_set("user_id", user["id"])
-session_regenerate()
+Session.set("user_id", user["id"])
+Session.regenerate
 ```
 
-### session_has(key)
+### Session.has(key)
 
 Checks if a key exists in the session.
 
@@ -4863,7 +4867,7 @@ Checks if a key exists in the session.
 
 **Returns:** Bool
 
-### session_id()
+### Session.id
 
 Gets the current session ID.
 
@@ -4875,7 +4879,7 @@ Gets the current session ID.
 
 A flash survives exactly one redirect: set it in the action that redirects, show it on the page the browser lands on. Messages queue in the session under `_flashes` as `{"type", "message"}` hashes. An app that defines its own `def flash` keeps it — the `def` replaces the builtin.
 
-### flash(type, message)
+### Session.flash(type, message)
 
 Queues a message for the next request that reads flashes. Creates the session when there is none yet.
 
@@ -4892,32 +4896,32 @@ def create(req)
   @post = Post.create(permit(params, {"title": true}))
   return render("posts/new", {}, {"status": 422}) if @post._errors
 
-  flash("success", "Post saved.")
+  Session.flash("success", "Post saved.")
   redirect(post_path(@post))
 end
 ```
 
-### flash_now(type, message)
+### Session.flash_now(type, message)
 
 A message for this request's render only — a form re-rendered with errors. It never reaches the session.
 
 **Returns:** null
 
 ```soli
-flash_now("error", "Fix the errors below.")
+Session.flash_now("error", "Fix the errors below.")
 render("posts/new", {}, {"status": 422})
 ```
 
-### flashes()
+### Session.flashes
 
-The messages to show now: the queued ones, then the `flash_now` ones. The first call in a request takes the queue out of the session; later calls in the same request answer the same list, so a layout and a partial can both read it. A request that never calls it leaves the queue for the next one.
+The messages to show now: the queued ones, then the `Session.flash_now` ones. The first call in a request takes the queue out of the session; later calls in the same request answer the same list, so a layout and a partial can both read it. A request that never calls it leaves the queue for the next one.
 
-A `flash` set before the first `flashes()` of a request shows in that request's render; one set after it waits for the next request.
+A `flash` set before the first `Session.flashes` of a request shows in that request's render; one set after it waits for the next request.
 
 **Returns:** Array of `{"type", "message"}` hashes
 
 ```erb
-<% flashes().each do |f| %>
+<% Session.flashes.each do |f| %>
   <div class="flash flash-<%= f.type %>"><%= f.message %></div>
 <% end %>
 ```
@@ -4925,6 +4929,8 @@ A `flash` set before the first `flashes()` of a request shows in that request's 
 ---
 
 ## Cookies
+
+`Cookie.set` and `Cookie.read` are the class form of `set_cookie` and `read_cookie`. `Cookie.signed(name)` reads and `Cookie.signed(name, value, options?)` writes; `Cookie.encrypted` is the encrypted pair. The free functions still run and warn once per process. The `cookies` hash below is the request's parsed header, not a trusted reader.
 
 Cookies are automatically parsed from the `Cookie` header and exposed as a global `cookies` hash, defaulting to `{}` when no cookies are present.
 
@@ -4940,14 +4946,15 @@ theme = cookies["theme"] or "light"
 session_id = cookies.session_id
 ```
 
-### set_cookie(name, value, options?)
+### Cookie.set(name, value, options?)
 
 Sets a response cookie sent to the client as a `Set-Cookie` header. Without
 options only `Path=/` is set. The options hash accepts `max_age` (seconds;
 `0` expires the cookie immediately), `expires`, `http_only`, `secure`,
-`same_site` (`"Lax"`/`"Strict"`/`"None"`), `path`, and `domain`, plus the
-`signed`/`encrypted` sealing options (below). Unknown keys raise so a typo
-can't silently weaken a cookie.
+`same_site` (`"Lax"`/`"Strict"`/`"None"`), `path`, and `domain`. Unknown keys
+raise so a typo can't silently weaken a cookie. Seal a value you need to
+trust with `Cookie.signed` or `Cookie.encrypted`, not with a flag on
+`Cookie.set`.
 
 `Secure` is added for you in two cases beyond asking for it: when
 `same_site` is `"None"` (browsers drop such a cookie otherwise, so the
@@ -4958,19 +4965,19 @@ session cookie.
 
 **Parameters:**
 - `name` (String) - Cookie name
-- `value` (String) - Cookie value (any JSON-serializable value with `signed`/`encrypted`)
-- `options` (Hash, optional) - Cookie attributes and sealing options
+- `value` (String) - Cookie value
+- `options` (Hash, optional) - Cookie attributes
 
 **Returns:** null
 
 **Example:**
 ```soli
-set_cookie("theme", "dark")
+Cookie.set("theme", "dark")
 
 # Persistent remember-me cookie (what `soli generate auth` scaffolds).
 # `secure` is not optional on a 30-day bearer credential: without it, one
 # plaintext request to the same host hands it to anyone on the path.
-set_cookie("remember_token", user["_key"] + ":" + token, {
+Cookie.set("remember_token", user["_key"] + ":" + token, {
   "max_age": 30 * 86400,
   "http_only": true,
   "same_site": "Lax",
@@ -4978,7 +4985,7 @@ set_cookie("remember_token", user["_key"] + ":" + token, {
 })
 
 # Expire it on logout:
-set_cookie("remember_token", "", {
+Cookie.set("remember_token", "", {
   "max_age": 0,
   "http_only": true,
   "same_site": "Lax",
@@ -4988,41 +4995,42 @@ set_cookie("remember_token", "", {
 
 ### Signed and encrypted cookies
 
-`{"signed": true}` seals the value with HMAC-SHA256 (readable on the client
-as base64url JSON, but tamper-proof); `{"encrypted": true}` seals it with
-AES-256-GCM (opaque). Sealed values accept any JSON-serializable value, not
-just strings. Both keys are HKDF-derived from `SOLI_SESSION_SECRET` (32+
-chars; sealing raises without it), the cookie **name** is bound into the
-seal so values can't be swapped between cookies, and a `max_age` is embedded
-as an expiry inside the payload. The two options are mutually exclusive.
+`Cookie.signed` seals with HMAC-SHA256 (readable on the client as base64url
+JSON, but tamper-proof). `Cookie.encrypted` seals with AES-256-GCM (opaque).
+One argument reads. Two or three write, and the mode is forced on. Sealed
+values accept any JSON-serializable value, not just strings. Both keys are
+HKDF-derived from `SOLI_SESSION_SECRET` (32+ chars; sealing raises without
+it), the cookie **name** is bound into the seal so values can't be swapped
+between cookies, and a `max_age` is embedded as an expiry inside the payload.
+The two modes are mutually exclusive.
 
 ```soli
-set_cookie("prefs", {"theme": "dark"}, {"encrypted": true, "max_age": 86400})
-set_cookie("uid", 42, {"signed": true})
+Cookie.encrypted("prefs", {"theme": "dark"}, {"max_age": 86400})
+Cookie.signed("uid", 42)
 ```
 
-### read_cookie(name, options?)
+`Cookie.signed(name)` and `Cookie.encrypted(name)` read. Two or three arguments write, and the mode is forced on. Two arguments whose second is a hash of cookie options only (`Cookie.signed("uid", {"max_age": 60})`) raise rather than overwrite the cookie with the options; to store such a hash as the value, pass options too: `Cookie.signed(name, value, {})`. `Cookie.set(..., {"signed": true})` and `Cookie.read(name, {"signed": true})` still run and warn once.
 
-Reads a cookie back, verifying/decrypting sealed values. The options state
-the trust requirement: `{"signed": true}` or `{"encrypted": true}` returns
-the decoded value only when it was validly sealed by your server under that
-name and mode — tampered, expired, forged (attacker-set bare values) or
-mode-mismatched cookies all return `nil`, indistinguishable from an absent
-cookie. Without options it returns the raw string value (like
-`cookies[name]`). Sees cookies written by `set_cookie` earlier in the same
-request.
+### Cookie.read(name, options?)
+
+Reads a cookie back as the raw string (like `cookies[name]`), including one
+written by `Cookie.set` earlier in the same request. A value you need to
+trust is `Cookie.signed(name)` or `Cookie.encrypted(name)`: those return the
+decoded value only when your server sealed it under that name and mode.
+Tampered, expired, forged or mode-mismatched cookies read as `nil`,
+indistinguishable from an absent cookie.
 
 **Parameters:**
 - `name` (String) - Cookie name
-- `options` (Hash, optional) - `{"signed": true}` or `{"encrypted": true}`
+- `options` (Hash, optional) - the old `{"signed": true}` or `{"encrypted": true}` form, which still verifies and warns once
 
-**Returns:** the decoded value, or `nil`
+**Returns:** the raw string, or `nil`. A sealed read returns the decoded value.
 
 **Example:**
 ```soli
-prefs = read_cookie("prefs", {"encrypted": true})   # {"theme": "dark"}
-uid = read_cookie("uid", {"signed": true})          # 42 — verified, not forgeable
-theme = read_cookie("theme")                        # raw string or nil
+prefs = Cookie.encrypted("prefs")   # {"theme": "dark"}
+uid = Cookie.signed("uid")          # 42 — verified, not forgeable
+theme = Cookie.read("theme")        # raw string or nil
 ```
 
 ### csrf_token()

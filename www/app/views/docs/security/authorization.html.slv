@@ -114,7 +114,7 @@ end</code></pre>
             </div>
         </div>
         <p class="text-gray-400 mt-6">
-            <code class="text-amber-300">ApplicationPolicy</code> returns <code class="text-amber-300">false</code> for every predicate, so you only override what you allow. <code class="text-amber-300">new?</code> falls back to <code class="text-amber-300">create?</code> and <code class="text-amber-300">edit?</code> to <code class="text-amber-300">update?</code> unless overridden.
+            The builtin <code class="text-amber-300">Policy</code> returns <code class="text-amber-300">false</code> for <code class="text-amber-300">index?</code>, <code class="text-amber-300">show?</code>, <code class="text-amber-300">create?</code>, <code class="text-amber-300">update?</code> and <code class="text-amber-300">destroy?</code>. <code class="text-amber-300">new?</code> calls <code class="text-amber-300">create?</code>, <code class="text-amber-300">edit?</code> calls <code class="text-amber-300">update?</code>, and <code class="text-amber-300">signed_in?</code> is a present <code class="text-amber-300">@user</code>. Generated <code class="text-amber-300">ApplicationPolicy</code> extends <code class="text-amber-300">Policy</code> and keeps the constructor. Override only what you allow.
         </p>
     </section>
 

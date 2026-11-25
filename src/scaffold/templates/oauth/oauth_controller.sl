@@ -94,7 +94,7 @@ def callback(req)
   # The provider must be the one this browser session started with, or a
   # callback for one provider could complete a flow begun for another.
   service = oauth_service_for(provider)
-  if service.nil? || session_get("oauth_provider") != provider
+  if service.nil? || Session.get("oauth_provider") != provider
     OauthSso.clear_state
     return {"status": 404, "body": "Unknown OAuth provider"}
   end

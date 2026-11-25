@@ -7,6 +7,8 @@
         <p class="text-xl text-gray-300 leading-8">
             Build real-time, interactive experiences. Soli ships with native WebSocket support and Phoenix-inspired
             presence tracking — everything you need for chat apps, notifications, dashboards, and live collaboration.
+            <code class="text-amber-400">Channel</code> is the class (<code class="text-amber-400">Channel.join</code>, <code class="text-amber-400">Channel.broadcast</code>, <code class="text-amber-400">Channel.send</code>, <code class="text-amber-400">Channel.subscribe</code>, <code class="text-amber-400">Channel.sse_broadcast</code>).
+            <code class="text-amber-400">sse</code> and <code class="text-amber-400">stream</code> stay response helpers. The old names (<code class="text-amber-400">ws_join</code>, <code class="text-amber-400">broadcast</code>, <code class="text-amber-400">sse_subscribe</code>, and the rest) still run and warn once per process.
         </p>
     </div>
 
@@ -437,29 +439,29 @@ function renderUserList() {
         <h3 class="text-xl font-semibold text-white mb-4">Messaging</h3>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-10">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <h4 class="font-mono text-white mb-2" id="ws_send">ws_send(connection_id, message)</h4>
+                <h4 class="font-mono text-white mb-2" id="ws_send">Channel.send(connection_id, message)</h4>
                 <p class="text-sm text-gray-400 mb-3">Send a message to one specific connection — held by another instance too, through the realtime bus. Returns <code>nil</code>.</p>
-                <pre class="bg-black/30 p-3 rounded text-xs text-gray-300 overflow-x-auto"><code>ws_send(conn_id, "Hello, client!")</code></pre>
+                <pre class="bg-black/30 p-3 rounded text-xs text-gray-300 overflow-x-auto"><code>Channel.send(conn_id, "Hello, client!")</code></pre>
             </div>
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <h4 class="font-mono text-white mb-2" id="ws_broadcast">ws_broadcast(message, opts?)</h4>
+                <h4 class="font-mono text-white mb-2" id="ws_broadcast">Channel.broadcast_all(message, opts?)</h4>
                 <p class="text-sm text-gray-400 mb-3">Send to every connected client. Returns <code>nil</code>. <code>{"local": true}</code> keeps it off the realtime bus.</p>
-                <pre class="bg-black/30 p-3 rounded text-xs text-gray-300 overflow-x-auto"><code>ws_broadcast("Server restarting in 5 min")</code></pre>
+                <pre class="bg-black/30 p-3 rounded text-xs text-gray-300 overflow-x-auto"><code>Channel.broadcast_all("Server restarting in 5 min")</code></pre>
             </div>
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <h4 class="font-mono text-white mb-2" id="ws_broadcast_room">ws_broadcast_room(channel, message, opts?)</h4>
+                <h4 class="font-mono text-white mb-2" id="ws_broadcast_room">Channel.broadcast_room(channel, message, opts?)</h4>
                 <p class="text-sm text-gray-400 mb-3">Send to every client subscribed to <code>channel</code>. Returns <code>nil</code>. <code>{"local": true}</code> keeps it off the realtime bus.</p>
-                <pre class="bg-black/30 p-3 rounded text-xs text-gray-300 overflow-x-auto"><code>ws_broadcast_room("room:lobby", payload)</code></pre>
+                <pre class="bg-black/30 p-3 rounded text-xs text-gray-300 overflow-x-auto"><code>Channel.broadcast_room("room:lobby", payload)</code></pre>
             </div>
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <h4 class="font-mono text-white mb-2" id="broadcast">broadcast(channel, payload, opts?)</h4>
+                <h4 class="font-mono text-white mb-2" id="broadcast">Channel.broadcast(channel, payload, opts?)</h4>
                 <p class="text-sm text-gray-400 mb-3">Fan <code>payload</code> out to the WebSocket channel <strong class="text-white">and</strong> the <a href="/docs/core-concepts/streaming#section-broadcast" class="text-amber-400 hover:text-amber-300">SSE topic</a> of the same name, so clients on either transport receive it. Non-string payloads auto-serialize to JSON; returns this process's SSE subscriber count. <code>{"local": true}</code> keeps it off the realtime bus. <code>Model.broadcast(payload, opts?)</code> is a shortcut that publishes to the model's collection channel.</p>
-                <pre class="bg-black/30 p-3 rounded text-xs text-gray-300 overflow-x-auto"><code>broadcast("room:lobby", { "event": "joined", "user": name })</code></pre>
+                <pre class="bg-black/30 p-3 rounded text-xs text-gray-300 overflow-x-auto"><code>Channel.broadcast("room:lobby", { "event": "joined", "user": name })</code></pre>
             </div>
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <h4 class="font-mono text-white mb-2" id="ws_close">ws_close(connection_id, reason)</h4>
+                <h4 class="font-mono text-white mb-2" id="ws_close">Channel.close(connection_id, reason)</h4>
                 <p class="text-sm text-gray-400 mb-3">Close a connection with a reason string — on another instance too. Returns <code>nil</code>.</p>
-                <pre class="bg-black/30 p-3 rounded text-xs text-gray-300 overflow-x-auto"><code>ws_close(conn_id, "Session expired")</code></pre>
+                <pre class="bg-black/30 p-3 rounded text-xs text-gray-300 overflow-x-auto"><code>Channel.close(conn_id, "Session expired")</code></pre>
             </div>
         </div>
 
@@ -467,20 +469,20 @@ function renderUserList() {
         <h3 class="text-xl font-semibold text-white mb-4">Rooms</h3>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-10">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <h4 class="font-mono text-white mb-2" id="ws_join">ws_join(channel)</h4>
-                <p class="text-sm text-gray-400 mb-3">Subscribe the connection whose handler is running to a channel, and return once the join has landed — a <code>ws_clients_in</code> on the next line sees it. Raises outside a WebSocket handler (return <code>{"join": channel}</code> there instead). Returns <code>nil</code>.</p>
+                <h4 class="font-mono text-white mb-2" id="ws_join">Channel.join(channel)</h4>
+                <p class="text-sm text-gray-400 mb-3">Subscribe the connection whose handler is running to a channel, and return once the join has landed — a <code>Channel.clients_in</code> on the next line sees it. Raises outside a WebSocket handler (return <code>{"join": channel}</code> there instead). Returns <code>nil</code>.</p>
                 <pre class="bg-black/30 p-3 rounded text-xs text-gray-300 overflow-x-auto"><code>def handle(event)
   if event["message"] == "join"
-    ws_join("room:lobby")
-    return {"send": "#{ws_clients_in("room:lobby").length} here"}
+    Channel.join("room:lobby")
+    return {"send": "#{Channel.clients_in("room:lobby").length} here"}
   end
   {}
 end</code></pre>
             </div>
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <h4 class="font-mono text-white mb-2" id="ws_leave">ws_leave(channel)</h4>
+                <h4 class="font-mono text-white mb-2" id="ws_leave">Channel.leave(channel)</h4>
                 <p class="text-sm text-gray-400 mb-3">Unsubscribe the connection whose handler is running from a channel. Raises outside a WebSocket handler. Returns <code>nil</code>.</p>
-                <pre class="bg-black/30 p-3 rounded text-xs text-gray-300 overflow-x-auto"><code>ws_leave("room:lobby")</code></pre>
+                <pre class="bg-black/30 p-3 rounded text-xs text-gray-300 overflow-x-auto"><code>Channel.leave("room:lobby")</code></pre>
             </div>
         </div>
 
@@ -488,21 +490,21 @@ end</code></pre>
         <h3 class="text-xl font-semibold text-white mb-4">Inspection</h3>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-10">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <h4 class="font-mono text-white mb-2" id="ws_clients">ws_clients()</h4>
+                <h4 class="font-mono text-white mb-2" id="ws_clients">Channel.clients</h4>
                 <p class="text-sm text-gray-400 mb-3">The id of every connection on this process. Returns <code>Array&lt;String&gt;</code>.</p>
-                <pre class="bg-black/30 p-3 rounded text-xs text-gray-300 overflow-x-auto"><code>connected = ws_clients()
+                <pre class="bg-black/30 p-3 rounded text-xs text-gray-300 overflow-x-auto"><code>connected = Channel.clients
 print("Connected: #{connected.length}")</code></pre>
             </div>
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <h4 class="font-mono text-white mb-2" id="ws_clients_in">ws_clients_in(channel)</h4>
+                <h4 class="font-mono text-white mb-2" id="ws_clients_in">Channel.clients_in(channel)</h4>
                 <p class="text-sm text-gray-400 mb-3">Ids of the connections on this process subscribed to <code>channel</code>. Returns <code>Array&lt;String&gt;</code>.</p>
-                <pre class="bg-black/30 p-3 rounded text-xs text-gray-300 overflow-x-auto"><code>ws_clients_in("room:lobby")</code></pre>
+                <pre class="bg-black/30 p-3 rounded text-xs text-gray-300 overflow-x-auto"><code>Channel.clients_in("room:lobby")</code></pre>
             </div>
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <h4 class="font-mono text-white mb-2" id="ws_count">ws_count(opts?)</h4>
+                <h4 class="font-mono text-white mb-2" id="ws_count">Channel.count(opts?)</h4>
                 <p class="text-sm text-gray-400 mb-3">Active connections on this process. <code>{"cluster": true}</code> adds the other instances&rsquo;, as of their last heartbeat. Returns <code>Int</code>.</p>
-                <pre class="bg-black/30 p-3 rounded text-xs text-gray-300 overflow-x-auto"><code>total = ws_count()
-everywhere = ws_count({"cluster": true})</code></pre>
+                <pre class="bg-black/30 p-3 rounded text-xs text-gray-300 overflow-x-auto"><code>total = Channel.count
+everywhere = Channel.count({"cluster": true})</code></pre>
             </div>
         </div>
 
@@ -510,19 +512,19 @@ everywhere = ws_count({"cluster": true})</code></pre>
         <h3 class="text-xl font-semibold text-white mb-4">Presence</h3>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <h4 class="font-mono text-white mb-2" id="ws_list_presence">ws_list_presence(channel)</h4>
+                <h4 class="font-mono text-white mb-2" id="ws_list_presence">Channel.list_presence(channel)</h4>
                 <p class="text-sm text-gray-400 mb-3">All users in a channel with their metadata, across instances when a realtime bus is set. Returns <code>Array&lt;Hash&gt;</code>.</p>
-                <pre class="bg-black/30 p-3 rounded text-xs text-gray-300 overflow-x-auto"><code>users = ws_list_presence("room:lobby")</code></pre>
+                <pre class="bg-black/30 p-3 rounded text-xs text-gray-300 overflow-x-auto"><code>users = Channel.list_presence("room:lobby")</code></pre>
             </div>
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <h4 class="font-mono text-white mb-2" id="ws_presence_count">ws_presence_count(channel)</h4>
+                <h4 class="font-mono text-white mb-2" id="ws_presence_count">Channel.presence_count(channel)</h4>
                 <p class="text-sm text-gray-400 mb-3">Unique users in <code>channel</code> (not connections). Returns <code>Int</code>.</p>
-                <pre class="bg-black/30 p-3 rounded text-xs text-gray-300 overflow-x-auto"><code>count = ws_presence_count("room:lobby")</code></pre>
+                <pre class="bg-black/30 p-3 rounded text-xs text-gray-300 overflow-x-auto"><code>count = Channel.presence_count("room:lobby")</code></pre>
             </div>
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <h4 class="font-mono text-white mb-2" id="ws_get_presence">ws_get_presence(channel, user_id)</h4>
+                <h4 class="font-mono text-white mb-2" id="ws_get_presence">Channel.get_presence(channel, user_id)</h4>
                 <p class="text-sm text-gray-400 mb-3">Presence info for one user. Returns <code>Hash</code> or <code>nil</code>.</p>
-                <pre class="bg-black/30 p-3 rounded text-xs text-gray-300 overflow-x-auto"><code>user = ws_get_presence("room:lobby", "u_123")</code></pre>
+                <pre class="bg-black/30 p-3 rounded text-xs text-gray-300 overflow-x-auto"><code>user = Channel.get_presence("room:lobby", "u_123")</code></pre>
             </div>
         </div>
     </section>
@@ -531,7 +533,7 @@ everywhere = ws_count({"cluster": true})</code></pre>
     <section class="mb-16">
         <h2 id="running-more-than-one-instance" class="text-3xl font-bold text-white mb-3">8 · Running more than one instance</h2>
         <p class="text-gray-400 mb-4">
-            By default every room lives in one process: a <code>broadcast</code> reaches the sockets and SSE streams of the process
+            By default every room lives in one process: a <code>Channel.broadcast</code> reaches the sockets and SSE streams of the process
             that made the call, and nothing else. Run two <code>soli serve</code> instances behind a load balancer — or broadcast from
             a job in the standalone <code>soli worker</code> — and the other process's clients hear nothing.
             <code>SOLI_REALTIME_BUS</code> connects them:
@@ -557,22 +559,22 @@ SOLIKV_RESP_HOST=kv.internal
 SOLIKV_RESP_PORT=6380
 SOLIKV_TOKEN=…</code></pre>
         <p class="text-gray-400 my-4">
-            With a bus, <code>broadcast</code>, <code>Model.broadcast</code>, <code>ws_broadcast</code>, <code>ws_broadcast_room</code>,
-            <code>sse_broadcast</code> and the handler <code>broadcast</code>, <code>broadcast_room</code> and <code>broadcast_channel</code>
+            With a bus, <code>Channel.broadcast</code>, <code>Model.broadcast</code>, <code>Channel.broadcast_all</code>, <code>Channel.broadcast_room</code>,
+            <code>Channel.sse_broadcast</code> and the handler <code>broadcast</code>, <code>broadcast_room</code> and <code>broadcast_channel</code>
             actions reach every instance. Each call delivers to its own process first, then hands the message to a background publisher
             and returns — the caller never waits on the bus. A process ignores its own messages, and never re-publishes what it received.
         </p>
         <ul class="text-gray-400 text-sm list-disc list-inside space-y-2 mb-6">
-            <li><strong class="text-white">Stay home per call:</strong> <code>broadcast(channel, payload, {"local": true})</code> (also on <code>Model.broadcast</code>, <code>ws_broadcast</code>, <code>ws_broadcast_room</code>).</li>
+            <li><strong class="text-white">Stay home per call:</strong> <code>Channel.broadcast(channel, payload, {"local": true})</code> (also on <code>Model.broadcast</code>, <code>Channel.broadcast_all</code>, <code>Channel.broadcast_room</code>).</li>
             <li><strong class="text-white">Fire and forget.</strong> The changefeed drops events for a lagging subscriber and does not cross SoliDB cluster nodes; a <code>solikv</code> subscriber that is reconnecting misses what was published meanwhile. A message can be lost — the contract of a Phoenix PubSub broadcast. Keep anything that must not be missed in the database.</li>
-            <li><strong class="text-white">Targeted sends cross too.</strong> <code>ws_send(id, …)</code> and <code>ws_close(id, …)</code> for a connection another instance holds go over the bus, and that instance delivers them &mdash; from an action, a job in <code>soli worker</code>, anywhere.</li>
-            <li><strong class="text-white">Presence spans instances.</strong> <code>track</code> on one instance shows up in <code>ws_list_presence</code>, <code>ws_presence_count</code> and <code>ws_get_presence</code> on all of them, and in their clients&rsquo; <code>presence_diff</code>s; a join goes out for a user&rsquo;s first connection anywhere, a leave for the last. Each instance owns its connections&rsquo; metas, announces every change and restates its whole presence every 10&nbsp;s while it has any, so a lost message heals at the next beat; a new instance has the others&rsquo; state within a second or two. An instance that dies without a word is forgotten after 30&nbsp;s and its users&rsquo; leaves go out then (expect 30&ndash;40&nbsp;s). Eventually consistent, like Phoenix.Presence. <code>phx_ref</code>s carry a random per-process tag (<code>"9f2c41ab.12"</code>), never a host name.</li>
-            <li><strong class="text-white">Counts are local unless asked.</strong> <code>broadcast</code> returns the SSE subscribers of this process; <code>ws_clients</code> / <code>ws_clients_in</code> list this process&rsquo;s connections. <code>ws_count({"cluster": true})</code> adds what the other instances reported at their last heartbeat (up to 10&nbsp;s old).</li>
+            <li><strong class="text-white">Targeted sends cross too.</strong> <code>Channel.send(id, …)</code> and <code>Channel.close(id, …)</code> for a connection another instance holds go over the bus, and that instance delivers them &mdash; from an action, a job in <code>soli worker</code>, anywhere.</li>
+            <li><strong class="text-white">Presence spans instances.</strong> <code>track</code> on one instance shows up in <code>Channel.list_presence</code>, <code>Channel.presence_count</code> and <code>Channel.get_presence</code> on all of them, and in their clients&rsquo; <code>presence_diff</code>s; a join goes out for a user&rsquo;s first connection anywhere, a leave for the last. Each instance owns its connections&rsquo; metas, announces every change and restates its whole presence every 10&nbsp;s while it has any, so a lost message heals at the next beat; a new instance has the others&rsquo; state within a second or two. An instance that dies without a word is forgotten after 30&nbsp;s and its users&rsquo; leaves go out then (expect 30&ndash;40&nbsp;s). Eventually consistent, like Phoenix.Presence. <code>phx_ref</code>s carry a random per-process tag (<code>"9f2c41ab.12"</code>), never a host name.</li>
+            <li><strong class="text-white">Counts are local unless asked.</strong> <code>Channel.broadcast</code> returns the SSE subscribers of this process; <code>Channel.clients</code> / <code>Channel.clients_in</code> list this process&rsquo;s connections. <code>Channel.count({"cluster": true})</code> adds what the other instances reported at their last heartbeat (up to 10&nbsp;s old).</li>
             <li><strong class="text-white">On <code>solidb</code>, every broadcast is a database write.</strong> For a very chatty room, prefer <code>solikv</code>, use <code>{"local": true}</code>, or pin its clients to one instance.</li>
             <li>The <code>solidb</code> bus lives in the application's <strong class="text-white">base database</strong> (<code>SOLIDB_DATABASE</code>), even inside a request that called <code>switch_tenant</code>.</li>
             <li>The <code>solikv</code> bus publishes on the channel <code>soli:rt</code>, or on <code>SOLI_REALTIME_CHANNEL</code> when set: two apps sharing one SoliKV must set distinct channels. In a multi-app (vhost) server, every app but the first appends its directory name. Its <code>PUBLISH</code> stays out of the dev bar's KV panel. Each subscriber pings every 15&nbsp;s and reconnects, with backoff, after 45&nbsp;s of silence.</li>
             <li>Messages over 256&nbsp;KB are delivered locally but not published.</li>
-            <li><code>soli worker</code> publishes but does not subscribe. A script publishes from a background thread: one that exits right after its <code>broadcast</code> can exit before the message is written.</li>
+            <li><code>soli worker</code> publishes but does not subscribe. A script publishes from a background thread: one that exits right after its <code>Channel.broadcast</code> can exit before the message is written.</li>
         </ul>
         <h4 class="font-mono text-white mb-2" id="realtime_bus">realtime_bus()</h4>
         <pre class="bg-black/30 p-3 rounded text-xs text-gray-300 overflow-x-auto mb-3"><code>realtime_bus()

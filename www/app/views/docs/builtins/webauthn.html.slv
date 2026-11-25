@@ -37,12 +37,12 @@ result = WebAuthn.registration_options({
   "user_id": user._key,
   "user_name": user.email
 })
-session_set("webauthn_challenge", result["challenge"])
+Session.set("webauthn_challenge", result["challenge"])
 render_json(result["options"])
 
 # 2. Verify what navigator.credentials.create() returned (its toJSON())
-challenge = session_get("webauthn_challenge")
-session_delete("webauthn_challenge")
+challenge = Session.get("webauthn_challenge")
+Session.delete("webauthn_challenge")
 record = WebAuthn.verify_registration(req["json"], {
   "challenge": challenge,
   "origins": ["https://example.com"],

@@ -25,17 +25,17 @@ class ImpersonationsController < Controller
 
     @_record("impersonate", admin, target)
     @_become(target)
-    session_set("impersonator_id", admin._key)
+    Session.set("impersonator_id", admin._key)
     # What `load_current_user` holds the impersonation to: the administrator's
     # sessions as they were, and an hour (AUTH_IMPERSONATION_SECONDS).
-    session_set("impersonator_version", admin.current_session_version)
-    session_set("impersonation_started_at", DateTime.utc.to_unix)
+    Session.set("impersonator_version", admin.current_session_version)
+    Session.set("impersonation_started_at", DateTime.utc.to_unix)
     # The marks are what make this session an impersonation — an hour, no
     # credentials touched, an end when the administrator's sessions end. A
     # session store that did not keep them leaves the target's own session:
     # read back, and without them there is no session at all.
-    if session_get("impersonator_id").to_s != admin._key.to_s || session_get("impersonation_started_at").nil?
-      session_destroy()
+    if Session.get("impersonator_id").to_s != admin._key.to_s || Session.get("impersonation_started_at").nil?
+      Session.destroy
       return {"status": 500, "body": "The impersonation could not be started."}
     end
     redirect("/")
@@ -43,7 +43,7 @@ class ImpersonationsController < Controller
 
   # DELETE /impersonate — back to your own account
   def destroy
-    admin_id = session_get("impersonator_id").to_s
+    admin_id = Session.get("impersonator_id").to_s
     return redirect("/") if admin_id.blank?
 
     admin = User.find_by("_key", admin_id)
@@ -51,9 +51,9 @@ class ImpersonationsController < Controller
     # Still an administrator, and still holding the sessions this was started
     # from: a reset or a demotion in the meantime gives nothing back.
     still_theirs = !admin.nil? && admin.admin? &&
-      (session_get("impersonator_version") ?? -1).to_i == admin.current_session_version
+      (Session.get("impersonator_version") ?? -1).to_i == admin.current_session_version
     unless still_theirs
-      session_destroy()
+      Session.destroy
       return redirect("/login")
     end
 
@@ -67,7 +67,7 @@ class ImpersonationsController < Controller
   def _may_impersonate(admin, target)
     return false if target.nil? || !admin.admin?
     # Not from inside an impersonation, not yourself, not another administrator.
-    return false if session_get("impersonator_id").to_s.present?
+    return false if Session.get("impersonator_id").to_s.present?
     return false if target._key == admin._key || target.admin?
 
     true
@@ -82,10 +82,10 @@ class ImpersonationsController < Controller
     auth_open_session(user, true, false)
     # Nobody signed in as this user just now: no auth_time for the OIDC
     # provider, and nothing that asks for a fresh sign-in.
-    session_delete("auth_time")
+    Session.delete("auth_time")
     # The administrator passed their own second factor; the user's is not
     # theirs to give.
-    session_set("two_factor", "ok:#{user._key}")
+    Session.set("two_factor", "ok:#{user._key}")
   end
 
   def _record(action, admin, target)

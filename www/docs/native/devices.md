@@ -32,7 +32,7 @@ a hard failure.
 
 ```erb
 <%- csrf_meta_tag() %>
-<% user_id = session_get("user_id") %>
+<% user_id = Session.get("user_id") %>
 <%- native_channel("user:#{str(user_id)}") rescue "" unless user_id.nil? %>
 ```
 

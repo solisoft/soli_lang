@@ -40,7 +40,7 @@ class AppleOauth
   # The client secret: a JWT naming the team, the client and Apple, signed
   # with the key. Five minutes is plenty for one exchange.
   static def client_secret
-    jwt_sign({"sub": getenv("APPLE_CLIENT_ID").to_s}, "", {
+    JWT.sign({"sub": getenv("APPLE_CLIENT_ID").to_s}, "", {
       "algorithm": "ES256",
       "key": AppleOauth.private_key,
       "kid": getenv("APPLE_KEY_ID").to_s,
@@ -99,7 +99,7 @@ class AppleOauth
   # The claims of the id_token, held to this app: Apple issued it, for this
   # client, and it has not expired.
   static def identity(id_token)
-    decoded = jwt_decode_unsafe(id_token.to_s)
+    decoded = JWT.decode_unsafe(id_token.to_s)
     throw "Apple sent no readable id_token" if decoded["error"]
 
     claims = decoded["claims"]

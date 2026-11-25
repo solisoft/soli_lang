@@ -257,13 +257,14 @@ fn emitted_templates_carry_the_security_guards() {
 
     let sessions = read("app/controllers/oauth_sessions_controller.sl");
     assert!(!sessions.contains("jwt_decode_unsafe("), "{sessions}");
-    assert!(sessions.contains("jwt_verify(hint"), "{sessions}");
+    assert!(!sessions.contains("JWT.decode_unsafe("), "{sessions}");
+    assert!(sessions.contains("JWT.verify(hint"), "{sessions}");
     assert!(
         sessions.contains(r#""issuer": oidc_issuer()"#),
         "{sessions}"
     );
     assert!(sessions.contains(r#""leeway":"#), "{sessions}");
-    // Only option keys `jwt_verify` knows.
+    // Only option keys `JWT.verify` knows.
     for key in [r#""aud":"#, r#""iss":"#, r#""verify_exp""#] {
         assert!(!sessions.contains(key), "{key} in {sessions}");
     }
@@ -326,7 +327,7 @@ fn emitted_templates_carry_the_security_guards() {
         "{authorizations}"
     );
     assert!(
-        !authorizations.contains(r#"session_get("auth_time") ?? DateTime"#),
+        !authorizations.contains(r#"Session.get("auth_time") ?? DateTime"#),
         "auth_time must not pretend the sign-in happened now"
     );
 }
@@ -487,7 +488,7 @@ fn the_fourth_audit_s_guards_are_in_the_generated_files() {
 
     let sessions = read("app/controllers/oauth_sessions_controller.sl");
     has(&sessions, "current_user()&.forget_me");
-    has(&sessions, r#"set_cookie("remember_token", "", {"#);
+    has(&sessions, r#"Cookie.set("remember_token", "", {"#);
 
     let device = read("app/models/oauth_device_code.sl");
     has(
@@ -607,7 +608,7 @@ fn the_fourth_audit_s_guards_are_in_the_generated_files() {
     );
     has(
         &authorize,
-        r#""session_expires_at": session_get("sign_in_expires_at")"#,
+        r#""session_expires_at": Session.get("sign_in_expires_at")"#,
     );
     has(&authorize, "&iss=#{url_encode(oidc_issuer())}");
     assert_eq!(
@@ -620,7 +621,7 @@ fn the_fourth_audit_s_guards_are_in_the_generated_files() {
     let device_controller = read("app/controllers/oauth_device_controller.sl");
     has(
         &device_controller,
-        r#"session_get("impersonator_id").to_s.present?"#,
+        r#"Session.get("impersonator_id").to_s.present?"#,
     );
     has(
         &device_controller,

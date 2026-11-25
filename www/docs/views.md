@@ -1221,11 +1221,11 @@ Component files live under `app/views/components/`. They do **not** need a leadi
 
 ### Component classes
 
-A component can have a class for the logic its template should not carry. Put it in `app/components/` (a flat directory) and name it after the template: `components/stats_card.html.slv` pairs with `StatsCardComponent`.
+A component can have a class for the logic its template should not carry. Put it in `app/components/` (a flat directory) and name it after the template: `components/stats_card.html.slv` pairs with `StatsCardComponent`. `soli generate component --class` emits `class StatsCardComponent < Component`. The empty `Component` base is optional for a class you write by hand; a template with no class still renders.
 
 ```soli
 # app/components/stats_card_component.sl
-class StatsCardComponent
+class StatsCardComponent < Component
   label: String
   value: Int
   trend: String

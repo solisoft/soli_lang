@@ -133,7 +133,7 @@ def show
   let template = slurp("pdf/invoice_compliant.template.json")
   let data     = { "data": invoice.to_render_hash() }.to_json()
 
-  return pdf_response(template, data, {
+  return PDF.response(template, data, {
     "filename": "invoice-#{invoice.number}.pdf",
     "title": "Invoice #{invoice.number}"
   })
@@ -149,18 +149,18 @@ Factur-X (EN 16931) embeds a machine-readable CII XML invoice inside a PDF/A-3b 
 **You bring the XML** — your template, your data, your XML. Full control of the layout, which is what a compliance template needs:
 
 ```soli
-let pdf = pdf_facturx(template, data, xml, { "profile": "en16931" })
+let pdf = PDF.facturx(template, data, xml, { "profile": "en16931" })
 ```
 
 **The engine computes it** — give it a typed invoice and it derives the totals, the VAT breakdown *and* the XML:
 
 ```soli
-let pdf = pdf_facturx_from_invoice(template, invoice, { "profile": "en16931" })
+let pdf = PDF.facturx_from_invoice(template, invoice, { "profile": "en16931" })
 ```
 
-> **The typed-invoice route uses a different placeholder namespace.** `pdf_facturx_from_invoice` ignores your data file and builds its own, so a template written for `pdf_render` will not interpolate against it. It supplies `invoice.*` (`number`, `created_at`, `due_date`, `due_amount`, `payment_terms`, `type_label`), `company.*` and `customer.*` (`name`, `address`, `zipcode`, `city`, `country`, `phone`, `vat_number`, `registration` — the SIREN/SIRET), `items[]`, `discounts[]`, `charges[]`, `total.*`, `infos.text` and `payment.*`.
+> **The typed-invoice route uses a different placeholder namespace.** `PDF.facturx_from_invoice` ignores your data file and builds its own, so a template written for `PDF.render` will not interpolate against it. It supplies `invoice.*` (`number`, `created_at`, `due_date`, `due_amount`, `payment_terms`, `type_label`), `company.*` and `customer.*` (`name`, `address`, `zipcode`, `city`, `country`, `phone`, `vat_number`, `registration` — the SIREN/SIRET), `items[]`, `discounts[]`, `charges[]`, `total.*`, `infos.text` and `payment.*`.
 >
-> It does **not** expose a per-rate VAT breakdown array. If your template must print one — as `invoice_compliant` does — use `pdf_facturx` and supply the XML yourself. A ready CII XML (`invoice_compliant.facturx.xml`) and a typed invoice (`invoice_compliant.invoice.json`) are both included so you can compare the two routes.
+> It does **not** expose a per-rate VAT breakdown array. If your template must print one — as `invoice_compliant` does — use `PDF.facturx` and supply the XML yourself. A ready CII XML (`invoice_compliant.facturx.xml`) and a typed invoice (`invoice_compliant.invoice.json`) are both included so you can compare the two routes.
 
 Both routes reject the `password` and `pdfa` options — the output is already PDF/A-3b.
 
@@ -173,7 +173,7 @@ scripts/gen_pdf_previews.sh                     # every sample
 scripts/gen_pdf_previews.sh invoice_minimal     # just one
 ```
 
-Needs nothing but `soli` — the engine rasterises its own pages through [`pdf_preview`](pdf.md#page-previews). Renders page 1 of each sample at 150 DPI, which for A4 gives 1240×1754.
+Needs nothing but `soli` — the engine rasterises its own pages through [`PDF.preview`](pdf.md#page-previews). Renders page 1 of each sample at 150 DPI, which for A4 gives 1240×1754.
 
 ## Layout notes
 

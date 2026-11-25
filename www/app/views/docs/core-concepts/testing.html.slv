@@ -564,7 +564,7 @@ assert(signed_out())</code></pre>
                 <a href="#def-with-session" class="group flex items-center gap-2 mb-3">
                     <code class="font-mono text-amber-400">with_session(data)</code>
                 </a>
-                <p class="text-gray-400 mb-2">Writes arbitrary key/value pairs into the test server&rsquo;s session and sets a matching <code>session_id</code> cookie. Subsequent requests in the same test see the data via <code>session_get(...)</code> on the server &mdash; under every session driver, the default in-memory one included: <code>as_user</code>, <code>sign_in</code> and <code>with_session</code> write into the server&rsquo;s own store, not the runner&rsquo;s.</p>
+                <p class="text-gray-400 mb-2">Writes arbitrary key/value pairs into the test server&rsquo;s session and sets a matching <code>session_id</code> cookie. Subsequent requests in the same test see the data via <code>Session.get(...)</code> on the server &mdash; under every session driver, the default in-memory one included: <code>as_user</code>, <code>sign_in</code> and <code>with_session</code> write into the server&rsquo;s own store, not the runner&rsquo;s.</p>
                 <pre data-filename="Example"><code class="language-soli text-sm">with_session({
   "user_id": 42,
   "role": "editor"

@@ -40,7 +40,7 @@ class TwoFactorController < Controller
     # other: someone else signed in with the password must not read it while
     # the owner scans it — they would hold the second factor too.
     nonce = Crypto.random_hex(16)
-    session_set("two_factor_setup", nonce)
+    Session.set("two_factor_setup", nonce)
     record = TwoFactor.start(user, Crypto.sha256(nonce))
     # Confirmed since the check above (the owner's confirm landed in
     # between): `start` hands that record back as it is, and its secret is
@@ -74,7 +74,7 @@ class TwoFactorController < Controller
     end
     # Nor from a session that did not start it (`setup`): it is told
     # nothing of the secret, and starts its own.
-    unless record.started_by?(session_get("two_factor_setup"))
+    unless record.started_by?(Session.get("two_factor_setup"))
       return @_render_index(user, "This set-up was started somewhere else. Start it again here.", 409)
     end
 
@@ -104,7 +104,7 @@ class TwoFactorController < Controller
     user.forget_me
     user.end_sessions
     @_stamp_session(user)
-    session_delete("two_factor_setup")
+    Session.delete("two_factor_setup")
     # A password reset that ran while this was being confirmed ended this
     # session, and the stamp above would have put it back: the password this
     # request signed in with is not the account's any more. The session
@@ -112,10 +112,10 @@ class TwoFactorController < Controller
     stored = User.find_by("_key", user._key)
     if stored.nil? || stored.password_digest != user.password_digest
       record.delete rescue nil
-      session_destroy()
+      Session.destroy
       return redirect("/login")
     end
-    session_set("two_factor", "ok:#{user._key}")
+    Session.set("two_factor", "ok:#{user._key}")
     render(
       "two_factor/backup_codes",
       {"title": "Backup codes", "codes": codes}
@@ -165,7 +165,7 @@ class TwoFactorController < Controller
     end
 
     record.delete
-    session_set("two_factor", "off:#{user._key}")
+    Session.set("two_factor", "off:#{user._key}")
     redirect("/two_factor")
   end
 
@@ -193,9 +193,9 @@ class TwoFactorController < Controller
     # sign-in the password step began: an end it came with (SAML) stays.
     # "Remember me" ticked at the password step is honoured now, with both
     # factors passed (read first: opening the session drops the note).
-    remember = session_get("remember_wanted").to_s == user._key.to_s
+    remember = Session.get("remember_wanted").to_s == user._key.to_s
     auth_open_session(user, true)
-    session_set("two_factor", "ok:#{user._key}")
+    Session.set("two_factor", "ok:#{user._key}")
     auth_remember(user) if remember
     redirect("/")
   end
@@ -247,7 +247,7 @@ class TwoFactorController < Controller
   # counts too, and the lower of the two stamps would sign this session out.
   def _stamp_session(user)
     stored = User.find_by("_key", user._key)
-    session_set("session_version", (stored ?? user).current_session_version)
+    Session.set("session_version", (stored ?? user).current_session_version)
   end
 
   def _render_index(user, error, status)

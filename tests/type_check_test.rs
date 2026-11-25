@@ -196,3 +196,25 @@ fn an_empty_branch_inside_a_block_keeps_the_blocks_end() {
         assert!(type_check_source(source, None).is_ok(), "{source}");
     }
 }
+
+/// `Bytes` values answer their instance methods bare, so an annotated value
+/// reads `data.length` as an Int, as it runs on both engines.
+#[test]
+fn bytes_instance_methods_type_as_their_values() {
+    let src = r#"
+let hello: Bytes = Bytes.from_string("hello")
+total = hello.length + 1
+def size_of(data: Bytes) -> Int
+  data.length
+end
+let part: Bytes = hello.slice(1, 3)
+let encoded: String = part.to_base64
+print(total, size_of(hello), encoded, hello.to_array.length)
+"#;
+    if let Err(errors) = type_check_source(src, None) {
+        panic!(
+            "Bytes should type-check: {:?}",
+            errors.iter().map(|e| e.to_string()).collect::<Vec<_>>()
+        );
+    }
+}

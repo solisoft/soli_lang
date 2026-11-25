@@ -90,6 +90,10 @@
                 <span class="w-8 h-8 rounded bg-orange-500/20 flex items-center justify-center text-orange-400 text-xs font-bold">S</span>
                 <span class="text-gray-300 group-hover:text-white text-sm">Session</span>
             </a>
+            <a href="/docs/builtins/bytes" class="flex items-center gap-2 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-amber-500/50 hover:bg-white/10 transition-all group">
+                <span class="w-8 h-8 rounded bg-sky-500/20 flex items-center justify-center text-sky-400 text-xs font-bold">By</span>
+                <span class="text-gray-300 group-hover:text-white text-sm">Bytes, Path, Zip</span>
+            </a>
             <a href="/docs/builtins/jobs" class="flex items-center gap-2 p-3 rounded-lg bg-white/5 border border-white/10 hover:border-amber-500/50 hover:bg-white/10 transition-all group">
                 <span class="w-8 h-8 rounded bg-orange-500/20 flex items-center justify-center text-orange-400 text-xs font-bold">J</span>
                 <span class="text-gray-300 group-hover:text-white text-sm">Jobs &amp; Cron</span>
@@ -277,6 +281,12 @@ and backtick syntax. Returns async results with stdout, stderr, and exit_code.</
                     <h3 class="text-lg font-semibold text-white group-hover:text-amber-400 transition-colors">Session Functions</h3>
                 </a>
                 <p class="text-gray-400 mt-2">Server-side session management for user state.</p>
+            </div>
+            <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+                <a href="/docs/builtins/bytes" class="group">
+                    <h3 class="text-lg font-semibold text-white group-hover:text-amber-400 transition-colors">Bytes, Path and Zip</h3>
+                </a>
+                <p class="text-gray-400 mt-2">A binary value, lexical paths, and an in-memory zip archive. <code class="text-amber-400">Bytes.from_string</code>, <code class="text-amber-400">Path.join</code>, <code class="text-amber-400">Zip.create</code>.</p>
             </div>
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="/docs/builtins/jobs" class="group">

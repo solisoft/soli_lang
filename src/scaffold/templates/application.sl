@@ -80,13 +80,13 @@
 # Equivalent env var: `SOLI_MAX_BODY_SIZE=33554432`.
 
 # ---------------------------------------------------------------------
-# session_configure — session storage backend.
+# Session.configure — session storage backend.
 # ---------------------------------------------------------------------
 # Default is `in_memory` (fast, lost on restart). Switch to `disk`,
 # `solidb`, or `solikv` for persistence across restarts and across
 # worker processes.
 #
-#   # session_configure({
+#   # Session.configure({
 #   #     "driver": "solikv",
 #   #     "solikv_host": "localhost",
 #   #     "solikv_port": 6380,

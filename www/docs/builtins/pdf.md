@@ -1,14 +1,16 @@
 # PDF & Factur-X Generation
 
-Render a PDF from a **JSON layout template** + a **JSON data** document, in-process — no headless browser, no wkhtmltopdf, no Node. Two builtins:
+Render a PDF from a **JSON layout template** + a **JSON data** document, in-process — no headless browser, no wkhtmltopdf, no Node. The `PDF` class:
 
-- `pdf_render(template, data, options?)` — an ordinary PDF.
-- `pdf_facturx(template, data, xml, options?)` — a **PDF/A-3b Factur-X (EN 16931)** electronic invoice with the Cross-Industry-Invoice XML embedded (you supply the XML).
-- `pdf_facturx_from_invoice(template, invoice, options?)` — the same PDF/A-3b Factur-X, but the CII XML **and** the visual totals/VAT breakdown are *generated* from a typed [invoice document](#typed-invoice-document) — no hand-written XML.
+- `PDF.render(template, data, options?)` — an ordinary PDF.
+- `PDF.facturx(template, data, xml, options?)` — a **PDF/A-3b Factur-X (EN 16931)** electronic invoice with the Cross-Industry-Invoice XML embedded (you supply the XML).
+- `PDF.facturx_from_invoice(template, invoice, options?)` — the same PDF/A-3b Factur-X, but the CII XML **and** the visual totals/VAT breakdown are *generated* from a typed [invoice document](#typed-invoice-document) — no hand-written XML.
 
-All three return the PDF as a **base64 string** (Soli has no bytes type). Save it with `file_write_base64(path, b64)`.
+`pdf_render`, `pdf_facturx`, `pdf_facturx_from_invoice` and the other `pdf_*` functions are the same methods under their old names. They still run, and each one warns once per process that it is deprecated.
 
-Need to *show* the document rather than download it? `pdf_preview(template, data)` gives you one **PNG per page** from the same template — see [Page previews](#page-previews).
+All three return the PDF as a **base64 string**. [`Bytes`](/docs/builtins/bytes) is a separate value and does not change what PDF returns. Save it with `file_write_base64(path, b64)`.
+
+Need to *show* the document rather than download it? `PDF.preview(template, data)` gives you one **PNG per page** from the same template — see [Page previews](#page-previews).
 
 > Looking for a finished invoice or quote to start from? See **[Invoice & Quote Templates](pdf-templates.md)** — eight ready-to-copy billing documents (compliant and minimal invoices, subscription billing, credit note, sectioned and optioned quotes) with their data files and previews.
 
@@ -21,21 +23,21 @@ let template = slurp("pdf/invoice.json")
 let data     = slurp("pdf/data.json")
 
 # Plain PDF
-let pdf = pdf_render(template, data)
+let pdf = PDF.render(template, data)
 file_write_base64("out/invoice.pdf", pdf)
 
 # Factur-X PDF/A-3b (embeds your EN 16931 CII XML)
 let xml = slurp("pdf/factur-x.xml")
-let fx  = pdf_facturx(template, data, xml, { "profile": "en16931", "title": "Invoice 42" })
+let fx  = PDF.facturx(template, data, xml, { "profile": "en16931", "title": "Invoice 42" })
 file_write_base64("out/facturx.pdf", fx)
 
 # A page image, for a thumbnail or a preview pane
-let thumbs = pdf_preview(template, data, { "width": 320 })
+let thumbs = PDF.preview(template, data, { "width": 320 })
 file_write_base64("public/previews/invoice.png", thumbs[0])
 
 # Factur-X from a typed invoice — totals, VAT breakdown and CII XML are generated
 let invoice = slurp("pdf/invoice.json")
-let fx2 = pdf_facturx_from_invoice(template, invoice, { "profile": "en16931" })
+let fx2 = PDF.facturx_from_invoice(template, invoice, { "profile": "en16931" })
 file_write_base64("out/facturx.pdf", fx2)
 ```
 
@@ -43,7 +45,7 @@ file_write_base64("out/facturx.pdf", fx2)
 
 ## Functions
 
-### pdf_render(template, data, options?)
+### PDF.render(template, data, options?)
 
 Render a PDF from a JSON layout `template` and a JSON `data` document.
 
@@ -54,7 +56,7 @@ Render a PDF from a JSON layout `template` and a JSON `data` document.
 
 **Returns:** String — base64-encoded PDF bytes.
 
-### pdf_response(template, data, options?)
+### PDF.response(template, data, options?)
 
 Render **and** wrap as a ready HTTP response — return it straight from a controller action, no `file_write_base64` + redirect dance:
 
@@ -62,69 +64,69 @@ Render **and** wrap as a ready HTTP response — return it straight from a contr
 def download
   let tpl  = slurp("pdf/invoice.json")
   let data = Invoice.find(params["id"]).to_json()
-  pdf_response(tpl, data, { "filename": "invoice-" + params["id"] + ".pdf" })
+  PDF.response(tpl, data, { "filename": "invoice-" + params["id"] + ".pdf" })
 end
 ```
 
-**Parameters:** as `pdf_render`, plus the optional `filename` option — when set, adds `Content-Disposition: attachment; filename="…"` (otherwise the browser renders the PDF inline).
+**Parameters:** as `PDF.render`, plus the optional `filename` option — when set, adds `Content-Disposition: attachment; filename="…"` (otherwise the browser renders the PDF inline).
 
 **Returns:** Hash — `{ "status": 200, "headers": { "Content-Type": "application/pdf", … }, "body_base64": … }`. The `body_base64` key is decoded to the binary body by the server (available to any handler, not just PDFs).
 
-### pdf_preview(template, data, options?)
+### PDF.preview(template, data, options?)
 
 Rasterise the same document to **PNG page images** — for a thumbnail grid, a preview pane, or a generated image asset. In-process, like everything else here: no headless browser and no poppler.
 
 ```soli
 # One base64 PNG per page.
-let pages = pdf_preview(template, data, { "dpi": 150 })
+let pages = PDF.preview(template, data, { "dpi": 150 })
 file_write_base64("out/page-1.png", pages[0])
 
 # Or a thumbnail width — `width` wins over `dpi`.
 # WebP is ~3x smaller than PNG for a page of type: 7.7 KB vs 25 KB here.
-let thumbs = pdf_preview(template, data,
+let thumbs = PDF.preview(template, data,
   { "width": 320, "format": "webp", "quality": 90 })
 
 # Or write them straight to disk, and get the paths back.
-let paths = pdf_preview(template, data,
+let paths = PDF.preview(template, data,
   { "width": 320, "out_dir": "public/previews", "prefix": "invoice-42" })
 # => ["public/previews/invoice-42-1.png", "public/previews/invoice-42-2.png"]
 ```
 
-**Parameters:** as `pdf_render`, plus the [preview options](#preview-options).
+**Parameters:** as `PDF.render`, plus the [preview options](#preview-options).
 
 **Returns:** Array<String> — one base64 PNG per rendered page, in page order. With `out_dir`, the paths written instead.
 
-Previews rasterise the **layout engine's own draw model**, not PDF bytes. So they cover what the renderer produces — `pdf_render` and `pdf_from_markdown` input — and *not* a merged, filled, stamped or uploaded PDF, which exists only as bytes. See [Page previews](#page-previews) for what a preview cannot show.
+Previews rasterise the **layout engine's own draw model**, not PDF bytes. So they cover what the renderer produces — `PDF.render` and `PDF.from_markdown` input — and *not* a merged, filled, stamped or uploaded PDF, which exists only as bytes. See [Page previews](#page-previews) for what a preview cannot show.
 
 Compose with the [Image](image.md) class for the rest: `Image.from_buffer(pages[0]).thumbnail(240).format("webp").to_buffer()`.
 
-### pdf_preview_from_markdown(markdown, options?)
+### PDF.preview_from_markdown(markdown, options?)
 
-The Markdown counterpart of `pdf_preview`, mirroring `pdf_from_markdown`.
+The Markdown counterpart of `PDF.preview`, mirroring `PDF.from_markdown`.
 
 ```soli
-let pages = pdf_preview_from_markdown(slurp("README.md"), { "width": 600 })
+let pages = PDF.preview_from_markdown(slurp("README.md"), { "width": 600 })
 ```
 
-**Returns:** Array<String> — as `pdf_preview`.
+**Returns:** Array<String> — as `PDF.preview`.
 
-### pdf_preview_response(template, data, options?)
+### PDF.preview_response(template, data, options?)
 
-One page as a ready `image/png` response — the preview mirror of `pdf_response`.
+One page as a ready `image/png` response — the preview mirror of `PDF.response`.
 
 ```soli
 def thumbnail
   let tpl  = slurp("pdf/invoice.json")
   let data = Invoice.find(params["id"]).to_json()
-  pdf_preview_response(tpl, data, { "page": 1, "width": 480 })
+  PDF.preview_response(tpl, data, { "page": 1, "width": 480 })
 end
 ```
 
-**Parameters:** as `pdf_preview`, plus `page` (Int, default `1`) and `filename`. `pages` and `out_dir` are rejected — a response carries one image.
+**Parameters:** as `PDF.preview`, plus `page` (Int, default `1`) and `filename`. `pages` and `out_dir` are rejected — a response carries one image.
 
 **Returns:** Hash — `{ "status": 200, "headers": { "Content-Type": "image/png" }, "body_base64": … }`.
 
-### pdf_facturx(template, data, xml, options?)
+### PDF.facturx(template, data, xml, options?)
 
 Render the visual PDF, then embed the caller-provided CII `xml` and apply PDF/A-3b + Factur-X conformance (embedded `factur-x.xml`, `/AF` + name tree, sRGB OutputIntent, PDF/A + Factur-X XMP). **The library embeds the XML; it does not generate it.**
 
@@ -135,7 +137,7 @@ Render the visual PDF, then embed the caller-provided CII `xml` and apply PDF/A-
 
 **Returns:** String — base64-encoded PDF/A-3b bytes.
 
-### pdf_facturx_from_invoice(template, invoice, options?)
+### PDF.facturx_from_invoice(template, invoice, options?)
 
 Render the visual PDF **and** generate the EN 16931 CII XML from a single typed [invoice document](#typed-invoice-document), then embed it (PDF/A-3b + Factur-X conformance). Line totals, the VAT breakdown, and the grand/amount-due totals are *computed* from the line items, so the human-readable PDF and the machine-readable XML can never disagree — which is the whole point of Factur-X.
 
@@ -148,21 +150,21 @@ The invoice is mapped onto the template's `${...}` paths (`invoice.*`, `company.
 
 **Returns:** String — base64-encoded PDF/A-3b bytes.
 
-### pdf_invoice_data(invoice)
+### PDF.invoice_data(invoice)
 
-The data `pdf_facturx_from_invoice` hands its template, as a Hash: `invoice.*`, `company.*`, `customer.*`, `items[]`, `discounts[]`, `charges[]`, `total.*`, `infos.text`, `payment.*`, with the totals and VAT computed by the same code, to the cent. Show the totals in a page without computing them twice, or draw a preview that prints exactly what the Factur-X PDF will:
+The data `PDF.facturx_from_invoice` hands its template, as a Hash: `invoice.*`, `company.*`, `customer.*`, `items[]`, `discounts[]`, `charges[]`, `total.*`, `infos.text`, `payment.*`, with the totals and VAT computed by the same code, to the cent. Show the totals in a page without computing them twice, or draw a preview that prints exactly what the Factur-X PDF will:
 
 ```soli
-data = pdf_invoice_data(invoice_json)
+data = PDF.invoice_data(invoice_json)
 print(data["total"]["due_amount"])                 # "€3126.28"
-pages = pdf_preview(template, {"data": data}.to_json, {"width": 760})
+pages = PDF.preview(template, {"data": data}.to_json, {"width": 760})
 ```
 
-**Parameters:** `invoice` (String) — the typed invoice JSON. An invalid one raises `pdf_invoice_data() invalid invoice: …`.
+**Parameters:** `invoice` (String) — the typed invoice JSON. An invalid one raises `PDF.invoice_data() invalid invoice: …`.
 
 **Returns:** Hash — the render data. Amounts are formatted strings with the currency symbol; `payment.amount` is bare (`3126.28`).
 
-### pdf_layout_map(template, data, options?)
+### PDF.layout_map(template, data, options?)
 
 Lay out a template and report **where every element landed**, without producing a PDF.
 
@@ -173,11 +175,11 @@ A visual editor cannot work this out for itself: a flowing element's position de
 `path` addresses the element in the template (`content.3.content.0`), so several boxes can share one path: a `repeat` is authored once and drawn per item. Header and footer bands are excluded — they repeat on every page from their own cursor, so a single box would be misleading.
 
 ```soli
-let boxes = pdf_layout_map(template, data, { "font_dirs": ["font"] })
+let boxes = PDF.layout_map(template, data, { "font_dirs": ["font"] })
 boxes.each(fn(b) print("#{b["path"]} at #{b["x"]},#{b["y"]}"))
 ```
 
-### pdf_from_markdown(markdown, options?)
+### PDF.from_markdown(markdown, options?)
 
 Render a designed PDF straight from a **Markdown** string — *write prose, get a
 PDF*. Headings, paragraphs, **bold**/*italic*/`code`/[links](#)/~~strike~~,
@@ -187,7 +189,7 @@ author.
 
 ```soli
 let md  = slurp("reports/quarterly.md")
-let pdf = pdf_from_markdown(md, { "font_dirs": ["font"] })
+let pdf = PDF.from_markdown(md, { "font_dirs": ["font"] })
 file_write_base64("quarterly.pdf", pdf)
 ```
 
@@ -195,9 +197,9 @@ file_write_base64("quarterly.pdf", pdf)
 - `markdown` (String) — the Markdown source (CommonMark + tables, strikethrough, task lists).
 - `options` (Hash, optional) — every [Option](#options) from the table below (`font_dirs`, `sign`, `pdfa`, `password`, …) **plus** theme overrides: `fonts` (Array — the font family, default `["titillium"]`), `fontSize` (body size, default 11), `lineHeight` (default 1.45), `headingColor`, `textColor`, `linkColor`, `codeColor` (all hex, no `#`).
 
-**Returns:** String — base64-encoded PDF bytes. Composes with everything else, so `pdf_from_markdown(md, { sign: {…} })` gives a **signed** document from Markdown.
+**Returns:** String — base64-encoded PDF bytes. Composes with everything else, so `PDF.from_markdown(md, { sign: {…} })` gives a **signed** document from Markdown.
 
-### pdf_fill(pdf, data, options?)
+### PDF.fill(pdf, data, options?)
 
 **Fill an existing PDF's form fields** (AcroForm) from data — the "take a
 government/enterprise form and fill it programmatically" workflow that the render
@@ -206,7 +208,7 @@ choice fields.
 
 ```soli
 # `pdf` is an app-root relative path, or base64 PDF bytes.
-let filled = pdf_fill("forms/w9.pdf", {
+let filled = PDF.fill("forms/w9.pdf", {
   "full_name": "Ada Lovelace",
   "email":     "ada@example.com",
   "agree":     true          # checkbox: true/"yes"/"on"/"1" checks it
@@ -221,38 +223,38 @@ file_write_base64("w9-filled.pdf", filled)
 
 **Returns:** String — base64-encoded filled PDF. Errors if the PDF has no AcroForm (no fillable fields). Field names must match the form's own field names.
 
-### pdf_merge(pdfs) · pdf_pages(pdf, selection) · pdf_stamp(pdf, text, options?)
+### PDF.merge(pdfs) · PDF.pages(pdf, selection) · PDF.stamp(pdf, text, options?)
 
 Operate on **existing** PDFs — the toolkit half of the engine.
 
 ```soli
 # Concatenate a cover + generated report + terms into one document.
-let doc = pdf_merge([ "cover.pdf", report_b64, "terms.pdf" ])
+let doc = PDF.merge([ "cover.pdf", report_b64, "terms.pdf" ])
 
 # Keep a subset of pages ("1-3,7" range string, or [1,3,7]).
-let excerpt = pdf_pages(doc, "1-3")
+let excerpt = PDF.pages(doc, "1-3")
 
 # Stamp a diagonal watermark on every page (or a subset).
-let draft = pdf_stamp(doc, "DRAFT", {
+let draft = PDF.stamp(doc, "DRAFT", {
   "opacity": 0.2, "color": "cc2222", "rotation": 45, "size": 60
 })
 ```
 
-- **`pdf_merge(pdfs)`** — `pdfs` is an array of PDF sources (each a **path** or **base64** bytes); returns them concatenated in order. Inherited page attributes (size, resources) are inlined so pages keep their look.
-- **`pdf_pages(pdf, selection)`** — keep a subset: a range string `"1-3,7,9-11"` or an array `[1,3,7]` (1-based). Kept pages stay in their original order.
-- **`pdf_stamp(pdf, text, options?)`** — draw `text` onto pages. Options: `pages` (range string / array; default all), `x`/`y` (points from bottom-left; default centered), `size` (default 48), `color` (hex, default grey), `rotation` (degrees, default 45), `opacity` (0–1, default 0.25). Ideal for `DRAFT`/`PAID`/`CONFIDENTIAL` watermarks.
+- **`PDF.merge(pdfs)`** — `pdfs` is an array of PDF sources (each a **path** or **base64** bytes); returns them concatenated in order. Inherited page attributes (size, resources) are inlined so pages keep their look.
+- **`PDF.pages(pdf, selection)`** — keep a subset: a range string `"1-3,7,9-11"` or an array `[1,3,7]` (1-based). Kept pages stay in their original order.
+- **`PDF.stamp(pdf, text, options?)`** — draw `text` onto pages. Options: `pages` (range string / array; default all), `x`/`y` (points from bottom-left; default centered), `size` (default 48), `color` (hex, default grey), `rotation` (degrees, default 45), `opacity` (0–1, default 0.25). Ideal for `DRAFT`/`PAID`/`CONFIDENTIAL` watermarks.
 
 All three take `pdf` as a **path or base64** and return base64.
 
-### pdf_extract_facturx(pdf) · pdf_attachments(pdf)
+### PDF.extract_facturx(pdf) · PDF.attachments(pdf)
 
-Read a **received** e-invoice — the inverse of `pdf_facturx*`. Closes the loop:
+Read a **received** e-invoice — the inverse of `PDF.facturx*`. Closes the loop:
 you can now *process* incoming Factur-X / ZUGFeRD / XRechnung invoices, not just
 emit them.
 
 ```soli
 # Pull the embedded EN 16931 XML out of an invoice you received.
-xml = pdf_extract_facturx("inbox/supplier-invoice.pdf")
+xml = PDF.extract_facturx("inbox/supplier-invoice.pdf")
 if xml.present?
   invoice = Xml.parse(xml)
   # the ram: prefix resolves through the declarations on the root element
@@ -262,25 +264,25 @@ if xml.present?
 end
 
 # Or list every embedded file.
-for file in pdf_attachments(pdf)
+for file in PDF.attachments(pdf)
   print("#{file["name"]} — #{file["mime"]} (#{file["size"]} bytes)")
 end
 ```
 
-- **`pdf_extract_facturx(pdf)`** — returns the embedded invoice XML as a **String**, or **null** if the PDF carries none. Matches the standard attachment names (`factur-x.xml`, `zugferd-invoice.xml`, `xrechnung.xml`, …).
-- **`pdf_attachments(pdf)`** — returns an array of `{ "name", "mime", "size", "base64" }`, one per embedded file (decode `base64` for the bytes). Reads the `/EmbeddedFiles` name tree, falling back to `/AF`.
+- **`PDF.extract_facturx(pdf)`** — returns the embedded invoice XML as a **String**, or **null** if the PDF carries none. Matches the standard attachment names (`factur-x.xml`, `zugferd-invoice.xml`, `xrechnung.xml`, …).
+- **`PDF.attachments(pdf)`** — returns an array of `{ "name", "mime", "size", "base64" }`, one per embedded file (decode `base64` for the bytes). Reads the `/EmbeddedFiles` name tree, falling back to `/AF`.
 
-### pdf_text(pdf, options?)
+### PDF.text(pdf, options?)
 
 The text of a PDF — one you received or one you made — for search, indexing or an LLM prompt.
 
 ```soli
-text = pdf_text("inbox/contract.pdf")            # every page, separated by a form feed
-pdf_text(pdf, {"pages": "2-3"})                  # some pages: a range string or [2, 3]
+text = PDF.text("inbox/contract.pdf")            # every page, separated by a form feed
+PDF.text(pdf, {"pages": "2-3"})                  # some pages: a range string or [2, 3]
 
 # An uploaded file carries its bytes as base64 in "data".
 file = find_uploaded_file(req, "document")
-pages = pdf_text(file["data"], {"per_page": true})   # ["page 1 text", "page 2 text", …]
+pages = PDF.text(file["data"], {"per_page": true})   # ["page 1 text", "page 2 text", …]
 
 pages.each_with_index do |page, i|
   Chunk.create({"document": doc._key, "page": i + 1, "text": page})
@@ -293,13 +295,13 @@ end
 - **Limits.** A scanned page is an image: it has no text and comes back empty (no OCR). Two text columns side by side are read line by line across both columns. A font with neither a usable encoding nor a `/ToUnicode` map gives what its codes mean in the standard encoding. A PDF that needs a password to open raises; one encrypted with an empty user password reads normally.
 - Not on the Cloudflare Workers build (no `pdf_*` function is).
 
-### pdf_sign(pdf, options) · pdf_verify(pdf)
+### PDF.sign(pdf, options) · PDF.verify(pdf)
 
 Sign an **existing** PDF, and verify signatures on one you received.
 
 ```soli
 # Sign a PDF you already have (a merged pack, a filled form, a received doc).
-let signed = pdf_sign("contract.pdf", {
+let signed = PDF.sign("contract.pdf", {
   cert: slurp("certs/signer.pem"),
   key:  slurp("certs/signer.key"),
   reason: "Approved",
@@ -307,13 +309,13 @@ let signed = pdf_sign("contract.pdf", {
 })
 
 # Verify the signatures on an incoming PDF.
-for sig in pdf_verify(received_pdf)
+for sig in PDF.verify(received_pdf)
   print("#{sig["field"]}: valid=#{sig["valid"]} covers_document=#{sig["covers_document"]} by #{sig["signer"]}")
 end
 ```
 
-- **`pdf_sign(pdf, options)`** — the standalone sibling of the [`sign`](#digital-signatures-pades) render option: `pdf` is a **path or base64**, and `options` is the sign config directly (`cert`, `key`, `chain?`, `reason?`, `location?`, `name?`, `contact?`, `tsa?`, `appearance?`, `field?`, `incremental?`, `stamps?`). Returns base64. Composes with the toolkit — `merge → sign`, `fill → sign`. Signing a PDF that is **already signed** adds a signature and keeps the earlier ones valid — see [Several signatures](#several-signatures).
-- **`pdf_verify(pdf)`** — returns an array of `{ field, valid, covers_document, signer, reason?, signed_at? }`, one per signature. **`valid`** means the CMS signature verifies against its embedded certificate **and** the document's ByteRange digest matches — i.e. the content is authentic and unmodified. It does **not** assert certificate *trust* (whether the issuer is a trusted CA). `covers_document` is true when the signature spans the whole file.
+- **`PDF.sign(pdf, options)`** — the standalone sibling of the [`sign`](#digital-signatures-pades) render option: `pdf` is a **path or base64**, and `options` is the sign config directly (`cert`, `key`, `chain?`, `reason?`, `location?`, `name?`, `contact?`, `tsa?`, `appearance?`, `field?`, `incremental?`, `stamps?`). Returns base64. Composes with the toolkit — `merge → sign`, `fill → sign`. Signing a PDF that is **already signed** adds a signature and keeps the earlier ones valid — see [Several signatures](#several-signatures).
+- **`PDF.verify(pdf)`** — returns an array of `{ field, valid, covers_document, signer, reason?, signed_at? }`, one per signature. **`valid`** means the CMS signature verifies against its embedded certificate **and** the document's ByteRange digest matches — i.e. the content is authentic and unmodified. It does **not** assert certificate *trust* (whether the issuer is a trusted CA). `covers_document` is true when the signature spans the whole file.
 
 ### Options
 
@@ -322,40 +324,40 @@ end
 | `font_dirs` | Array<String> | `["font"]` | Directories to load fonts from. No fonts are bundled. |
 | `fetch_images` | Bool | `true` | Fetch `http(s)` images (`false` = offline/deterministic). Fetches go through the same SSRF guard as `HTTP.*` — loopback/private/reserved addresses are refused, the resolved address is pinned (DNS-rebinding safe), each redirect hop is re-validated — and a body over 20 MiB is rejected. |
 | `profile` | String | `en16931` | *(Factur-X)* Factur-X profile. |
-| `title` / `author` / `subject` | String | — | Document metadata (PDF Info dictionary). Works for `pdf_render` too; the plain-render title defaults to `"invoice"` when unset. |
+| `title` / `author` / `subject` | String | — | Document metadata (PDF Info dictionary). Works for `PDF.render` too; the plain-render title defaults to `"invoice"` when unset. |
 | `stationery` | String | — | Path (app-root relative) to a **letterhead PDF** drawn beneath every page's content. Page 1 uses the letterhead's first page; later pages use its second page when present, else the first. A missing file is an error. The letterhead is scaled to the page size, and a template `background` fill paints over it. |
 | `attachments` | Array | — | Files embedded into the reader's attachments panel: `[{ "path": "exports/data.csv", "name"?, "mime"? }]` (paths app-root relative; missing file = error; MIME guessed from the extension when omitted). Composes with Factur-X — `factur-x.xml` and your attachments coexist in the name tree and `/AF`. |
-| `password` / `owner_password` | String | — | Password-protect the PDF (**AES-128**). `password` is required to open the document; `owner_password` lifts restrictions (defaults to `password`). **Incompatible with `pdf_facturx*`** — PDF/A forbids encryption. |
+| `password` / `owner_password` | String | — | Password-protect the PDF (**AES-128**). `password` is required to open the document; `owner_password` lifts restrictions (defaults to `password`). **Incompatible with `PDF.facturx*`** — PDF/A forbids encryption. |
 | `permissions` | Array | all | With a password set, the actions the user password permits: any of `["print", "copy", "modify", "annotate"]`. Empty (default) allows everything — a pure open-password. |
-| `pdfa` | Bool | `false` | *(pdf_render / pdf_response)* Emit **PDF/A-3b** (archival conformance: sRGB OutputIntent, XMP `pdfaid` metadata, PDF 1.7) without any Factur-X payload — for legal-archiving mandates on documents that aren't invoices. Incompatible with `password` (PDF/A forbids encryption); `pdf_facturx*` reject it (they are already PDF/A). **Composes with a `tagged` template** — the output then declares PDF/A-3b *and* PDF/UA-1 (accessible + archival). Attachments compose. |
-| `sign` | Hash | — | **Digitally sign** the PDF (PAdES) — see [Digital signatures](#digital-signatures-pades). `{ "cert", "key", "chain"?, "reason"?, "location"?, "name"?, "contact"? }`. Works on `pdf_render`, `pdf_response`, and `pdf_facturx*` (signed e-invoices). Incompatible with `password` (a signed PDF must not be encrypted). |
+| `pdfa` | Bool | `false` | *(PDF.render / PDF.response)* Emit **PDF/A-3b** (archival conformance: sRGB OutputIntent, XMP `pdfaid` metadata, PDF 1.7) without any Factur-X payload — for legal-archiving mandates on documents that aren't invoices. Incompatible with `password` (PDF/A forbids encryption); `PDF.facturx*` reject it (they are already PDF/A). **Composes with a `tagged` template** — the output then declares PDF/A-3b *and* PDF/UA-1 (accessible + archival). Attachments compose. |
+| `sign` | Hash | — | **Digitally sign** the PDF (PAdES) — see [Digital signatures](#digital-signatures-pades). `{ "cert", "key", "chain"?, "reason"?, "location"?, "name"?, "contact"? }`. Works on `PDF.render`, `PDF.response`, and `PDF.facturx*` (signed e-invoices). Incompatible with `password` (a signed PDF must not be encrypted). |
 
 ### Preview options
 
-Only `pdf_preview*` reads these.
+Only `PDF.preview*` reads these.
 
 | Key | Type | Default | Meaning |
 |---|---|---|---|
 | `dpi` | Number | `96` | Rasterisation density; scale is `dpi / 72`. A4 comes out 794×1123 at 96, 1240×1754 at 150. Capped at 600. |
 | `width` / `height` | Int (px) | — | Exact output size in pixels. **Either one overrides `dpi`**; given both, the page is scaled to *fit inside* the box with its aspect ratio preserved. Capped at 8192 per axis. |
-| `pages` | Array\|String | all | Which pages to rasterise, 1-based — `[1, 3]` or `"1-3,7"`, the same selection `pdf_pages` takes. Asking for a page past the end is an error, not a short array. |
+| `pages` | Array\|String | all | Which pages to rasterise, 1-based — `[1, 3]` or `"1-3,7"`, the same selection `PDF.pages` takes. Asking for a page past the end is an error, not a short array. |
 | `out_dir` | String | — | Write PNG files here (app-root relative, jailed) and return their paths instead of base64. |
 | `prefix` | String | `"page"` | Base file name under `out_dir`. One page gives `<prefix>.png`; several give `<prefix>-1.png`, `<prefix>-2.png`, … Must be a plain file name — no path separators. |
-| `page` | Int | `1` | *(pdf_preview_response only)* Which page the response carries. |
+| `page` | Int | `1` | *(PDF.preview_response only)* Which page the response carries. |
 | `format` | String | `"png"` | `"png"`, `"webp"` or `"jpeg"`. **Reach for `webp`** — see below. The written file and the response `Content-Type` follow it. |
 | `quality` | Int | `90` | 1&ndash;100, for `webp` and `jpeg`. Ignored by `png`, which is lossless. |
 
-`font_dirs` and `fetch_images` work as they do for `pdf_render`. `stationery`, `attachments`, `password`, `pdfa` and `sign` are **accepted but ignored**, so one options hash can drive both the PDF and its preview. The two that change what you would see — `stationery` and `sign` — warn once per process; the rest cannot alter a pixel, so they pass quietly.
+`font_dirs` and `fetch_images` work as they do for `PDF.render`. `stationery`, `attachments`, `password`, `pdfa` and `sign` are **accepted but ignored**, so one options hash can drive both the PDF and its preview. The two that change what you would see — `stationery` and `sign` — warn once per process; the rest cannot alter a pixel, so they pass quietly.
 
 ---
 
 ## Page previews
 
-`pdf_preview` gives the layout engine a second backend: instead of emitting PDF operators it paints the same laid-out page into pixels. That has three consequences worth knowing.
+`PDF.preview` gives the layout engine a second backend: instead of emitting PDF operators it paints the same laid-out page into pixels. That has three consequences worth knowing.
 
 **It is the same layout.** A preview is not an approximation of the PDF from a separate renderer — it is the identical draw model, measured with the identical font metrics. What you see is where the text will be.
 
-**It only covers what the engine renders.** `pdf_merge`, `pdf_pages`, `pdf_fill`, `pdf_stamp` and an uploaded PDF all produce *bytes*, and rasterising those would need a PDF interpreter. Preview the template instead, before those steps.
+**It only covers what the engine renders.** `PDF.merge`, `PDF.pages`, `PDF.fill`, `PDF.stamp` and an uploaded PDF all produce *bytes*, and rasterising those would need a PDF interpreter. Preview the template instead, before those steps.
 
 **A few things cannot appear**, and none of them fails the render:
 
@@ -403,7 +405,7 @@ so you can emit an invoice that is **archival (PDF/A-3b), machine-readable
 
 ```soli
 # Sign a plain PDF.
-pdf = pdf_render(template, data, {
+pdf = PDF.render(template, data, {
   sign: {
     cert: slurp("config/certs/signer.pem"),   # signer certificate (PEM or path)
     key:  slurp("config/certs/signer.key"),   # private key (PEM or path)
@@ -415,7 +417,7 @@ pdf = pdf_render(template, data, {
 })
 
 # Sign a Factur-X e-invoice — the flagship: archival + machine-readable + signed.
-pdf = pdf_facturx_from_invoice(template, invoice, {
+pdf = PDF.facturx_from_invoice(template, invoice, {
   sign: { cert: signer_pem, key: signer_key }
 })
 ```
@@ -449,7 +451,7 @@ The `tsa` URL is SSRF-checked like any outbound request (a private or loopback
 TSA is refused, redirects are re-validated) and the reply is capped at 1 MiB.
 
 ```soli
-pdf = pdf_render(template, data, {
+pdf = PDF.render(template, data, {
   sign: {
     cert: signer_pem, key: signer_key,
     tsa: "http://timestamp.digicert.com"   # any RFC 3161 TSA
@@ -466,14 +468,14 @@ after them. Each earlier signature still covers what it signed, so a contract
 can collect signatures in turn — and every one of them verifies.
 
 ```soli
-contract = pdf_from_markdown(terms)
-contract = pdf_sign(contract, { cert: alice_pem, key: alice_key, name: "Alice",
+contract = PDF.from_markdown(terms)
+contract = PDF.sign(contract, { cert: alice_pem, key: alice_key, name: "Alice",
                                 appearance: { x: 40, y: 40, width: 180, height: 60,
                                               image: params["signature"] } })   # canvas data URL
-contract = pdf_sign(contract, { cert: bob_pem, key: bob_key, name: "Bob",
+contract = PDF.sign(contract, { cert: bob_pem, key: bob_key, name: "Bob",
                                 appearance: { x: 320, y: 40, width: 180, height: 60 } })
 
-pdf_verify(contract)
+PDF.verify(contract)
 # [{ field: "Signature1", valid: true, covers_document: false, signer: "…", … },
 #  { field: "Signature2", valid: true, covers_document: true,  signer: "…", … }]
 ```
@@ -488,7 +490,7 @@ One signer, several places — initials on every page plus the signature at the
 end — is one signature with `stamps`, not one signature per place:
 
 ```soli
-pdf_sign(contract, { cert: seal_pem, key: seal_key, name: "Alice",
+PDF.sign(contract, { cert: seal_pem, key: seal_key, name: "Alice",
                      appearance: { page: 3, x: 60, y: 90, width: 180, height: 60, image: drawn },
                      stamps: [{ page: 1, x: 480, y: 40, width: 80, height: 30 },
                               { page: 2, x: 480, y: 40, width: 80, height: 30 }] })
@@ -497,7 +499,7 @@ pdf_sign(contract, { cert: seal_pem, key: seal_key, name: "Alice",
 Place empty signature fields first and sign into them by name with `field:`;
 the signer then never chooses where the block goes.
 
-`pdf_stamp`, `pdf_merge`, `pdf_fill` and the other editing builtins rewrite the
+`PDF.stamp`, `PDF.merge`, `PDF.fill` and the other editing builtins rewrite the
 whole file, so running one **after** a signature invalidates it: stamp, merge
 and fill first, sign last.
 
@@ -532,7 +534,7 @@ class Invoice < Model
 
   # Render the Factur-X for this record and file it as the `pdf` attachment.
   def store_pdf(template, invoice_json)
-    let pdf = pdf_facturx_from_invoice(template, invoice_json, { "profile": "en16931" })
+    let pdf = PDF.facturx_from_invoice(template, invoice_json, { "profile": "en16931" })
     this.attach_pdf({
       "data":         pdf,                          # pass base64 as-is — stored as raw bytes (decoded automatically)
       "filename":     "invoice-#{this.number}.pdf",
@@ -685,12 +687,12 @@ PDF/UA, so a tagged render **warns** for each image missing one:
 
 Headings, paragraphs, figures, **lists** (`L › LI › LBody`) and **tables**
 (`Table › TR › TD/TH`, with a `/Scope` on header cells) are all mapped to real
-structure. A tagged document rendered with `pdfa` (or via `pdf_facturx*`)
+structure. A tagged document rendered with `pdfa` (or via `PDF.facturx*`)
 validates as **both PDF/A-3b and PDF/UA-1** — checked in CI with the
 [veraPDF](https://verapdf.org) reference validator.
 
 **Tagging composes with PDF/A and Factur-X.** Set `options.tagged` together with
-the `pdfa` option (or use `pdf_facturx*`) and the output carries **both** the
+the `pdfa` option (or use `PDF.facturx*`) and the output carries **both** the
 PDF/A-3b (`pdfaid`) and PDF/UA-1 (`pdfuaid`) identifiers over a single structure
 tree — one file that is accessible, archival and (for Factur-X) machine-readable
 at once. The tagging pass runs first; the PDF/A pass then merges the PDF/UA
@@ -944,7 +946,7 @@ Span fields: `text` (required), `fontSize`, `fontWeight`, `italic` (bool), `mono
 let spans = Markdown.to_spans("Pay **now**, read the `README`, see [docs](https://x).")
 let template = { "fonts": ["titillium"],
   "content": [ { "type": "paragraph", "spans": spans } ] }
-let pdf = pdf_render(template.to_json(), "{}")
+let pdf = PDF.render(template.to_json(), "{}")
 ```
 
 ### Payment QR (scan-to-pay)
@@ -971,7 +973,7 @@ A `qr` element renders a QR code as a raster image (square, side = `width` pt). 
 
 - **`"kind": "text"`** — encodes `value` verbatim.
 
-When you use `pdf_facturx_from_invoice`, a ready-made `payment` block is exposed in the render data so the QR binds straight to the invoice — give the seller an `iban` (and optional `bic`):
+When you use `PDF.facturx_from_invoice`, a ready-made `payment` block is exposed in the render data so the QR binds straight to the invoice — give the seller an `iban` (and optional `bic`):
 
 ```json
 { "type": "qr", "kind": "epc",
@@ -1016,7 +1018,7 @@ java -jar Mustang-CLI.jar --action validate --source invoice.pdf
 
 ### Typed invoice document
 
-`pdf_facturx_from_invoice` takes a typed invoice instead of separate data + XML. Totals and the VAT breakdown are computed from the lines, then mapped onto the template (`invoice.*`, `company.*` = seller, `customer.*` = buyer, `items[]`, `total.*`, `infos.text`) and emitted as CII XML.
+`PDF.facturx_from_invoice` takes a typed invoice instead of separate data + XML. Totals and the VAT breakdown are computed from the lines, then mapped onto the template (`invoice.*`, `company.*` = seller, `customer.*` = buyer, `items[]`, `total.*`, `infos.text`) and emitted as CII XML.
 
 ```json
 {
@@ -1139,7 +1141,7 @@ Generation is in-process and CPU-bound. Benchmark a controller that renders an i
 
 ```soli
 def pdf_bench
-  let pdf = pdf_render(slurp("pdf/template.json"), slurp("pdf/data.json"),
+  let pdf = PDF.render(slurp("pdf/template.json"), slurp("pdf/data.json"),
                        { "fetch_images": false })
   return { "status": 200, "headers": {"Content-Type": "text/plain"},
            "body": "generated " + len(pdf) + " base64 bytes" }

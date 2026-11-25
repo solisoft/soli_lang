@@ -503,11 +503,11 @@ keeps in memory decides what else to set:
 
 - **Realtime.** WebSocket rooms and SSE subscribers live in the process that accepted the
   connection. Set `SOLI_REALTIME_BUS=solidb` (or `solikv`, through SoliKV/Redis) on every instance (and on `soli worker`) so
-  `broadcast`, `Model.broadcast`, `ws_broadcast*`, `sse_broadcast` and the handler broadcast
+  `Channel.broadcast`, `Model.broadcast`, `Channel.broadcast_all` / `Channel.broadcast_room`, `Channel.sse_broadcast` and the handler broadcast
   actions reach every instance — see
   [Running more than one instance](websockets.md#running-more-than-one-instance). Presence
-  (`track`, `ws_list_presence`), `ws_send` and `ws_close` span instances too; connection
-  counts stay per instance unless you ask `ws_count({"cluster": true})`. A socket stays on the
+  (`track`, `Channel.list_presence`), `Channel.send` and `Channel.close` span instances too; connection
+  counts stay per instance unless you ask `Channel.count({"cluster": true})`. A socket stays on the
   instance it connected to for its whole life, so WebSockets need no sticky sessions.
 - **Sessions.** The default `in_memory` session driver is per process: pick `cookie`, `solidb`
   or `solikv` (`SOLI_SESSION_DRIVER`), or make the balancer sticky.

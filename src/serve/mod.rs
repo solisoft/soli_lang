@@ -859,6 +859,7 @@ pub fn serve_folder_with_options_and_hooks(
     // subclass Mailer (app/mailers/*.sl) loads.
     crate::interpreter::builtins::mailer::ensure_prelude(&mut interpreter);
     crate::interpreter::events::ensure_prelude(&mut interpreter);
+    crate::interpreter::builtins::policy::ensure_prelude(&mut interpreter);
     boot_trace("interpreter created");
 
     // Two files declaring one top-level name: the one loaded last would
@@ -1789,6 +1790,7 @@ fn run_hyper_server_worker_pool(
                     // Mailer/Message base classes available before app load.
                     crate::interpreter::builtins::mailer::ensure_prelude(&mut interpreter);
                     crate::interpreter::events::ensure_prelude(&mut interpreter);
+                    crate::interpreter::builtins::policy::ensure_prelude(&mut interpreter);
 
                     worker_loop(
                         i,

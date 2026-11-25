@@ -29,7 +29,7 @@
         <p class="text-gray-400 mb-4">
             A JWT announces its own algorithm in a header the bearer controls. That is where
             <code class="text-amber-300">alg: none</code> and the RS256&rarr;HS256 confusion attack come from &mdash;
-            <a href="/docs/builtins/jwt" class="text-amber-400 hover:text-amber-300"><code>jwt_verify</code></a>
+            <a href="/docs/builtins/jwt" class="text-amber-400 hover:text-amber-300"><code>JWT.verify</code></a>
             has to defend against it explicitly, by refusing to let the token pick the algorithm.
         </p>
         <p class="text-gray-400 mb-4">
@@ -87,8 +87,8 @@
                 expiry, a claim that doesn't match what you expected.
             </p>
             <p class="text-gray-300 mb-3">
-                This is deliberately unlike <code>jwt_verify</code>, which returns <code>{ "error": true, ... }</code>. That hash is
-                <em>truthy</em>, so <code>if jwt_verify(...)</code> treats a <strong class="text-white">rejected</strong> token as
+                This is deliberately unlike <code>JWT.verify</code>, which returns <code>{ "error": true, ... }</code>. That hash is
+                <em>truthy</em>, so <code>if JWT.verify(...)</code> treats a <strong class="text-white">rejected</strong> token as
                 authenticated. Raising makes the failure path fail closed, and postfix <code>rescue</code> keeps it to one line:
             </p>
             <pre data-filename="Fail closed"><code class="language-soli text-sm">claims = Paseto.verify(token, getenv("PASETO_PUBLIC_KEY")) rescue nil

@@ -84,9 +84,9 @@ may still exist under another name — try a synonym before writing it by hand.
 | A directory (Okta, Entra ID) provisions and deactivates users | `soli generate scim` | `docs/scim.md` |
 | Sign in through a SAML identity provider (Okta, Entra ID…) | `soli generate saml` — never hand-roll the XML signature check: `Saml.verify_response` | `docs/saml.md` |
 | Be an OpenID Connect provider | `soli generate oidc_provider` | `docs/oidc-provider.md` |
-| API tokens | `jwt_sign` / `jwt_verify`, `Paseto.*` | `docs/authentication.md`, `docs/builtins.md` → JWT, PASETO |
+| API tokens | `JWT.sign` / `JWT.verify`, `Paseto.*` | `docs/authentication.md`, `docs/builtins.md` → JWT, PASETO |
 | Hashes, HMAC, random tokens, signatures, hash chains | `Crypto.*` (SHA, HMAC, `random_token`, Ed25519, X25519, Merkle) | `docs/builtins.md` → Cryptography |
-| Cookies (signed / encrypted), CSRF | `set_cookie`, `read_cookie`, `csrf_token` | `docs/sessions.md`, `docs/forms.md` |
+| Sessions, flash, cookies (signed / encrypted), CSRF | `Session.get` / `Session.set`, `Session.flash`, `Cookie.set`, `Cookie.signed`, `Cookie.encrypted`, `csrf_token` | `docs/sessions.md`, `docs/forms.md` |
 | Security headers, trust proxy, body limits | builtins + env vars | `docs/security/defaults.md`, `docs/builtins/hardening.md` |
 | Rate limiting, circuit breaker, retry | `RateLimiter`, `CircuitBreaker`, `Retry.with_backoff` | `docs/builtins.md` |
 | Spam on public forms (no captcha) | `spam_check(req)` — honeypot + render time already in `csrf_field()`; `pow_field()`, `SpamFilter`, `/__soli/spam` | `docs/security/spam.md` |
@@ -95,7 +95,7 @@ may still exist under another name — try a synonym before writing it by hand.
 | Forms, validation errors, nested params | `form_with`, `permit` | `docs/forms.md`, `docs/request-params.md` |
 | Input validation schemas | `V.string()`, `validate` | `docs/validation.md` |
 | File uploads, S3, images (resize/crop) | `find_uploaded_file`, `S3.*`, `Image` | `docs/builtins.md` → File Upload, S3, Image |
-| PDF / invoices / Factur-X | PDF builtins + ready templates | `docs/builtins/pdf.md`, `docs/builtins/pdf-templates.md` |
+| PDF / invoices / Factur-X | `PDF.render`, `PDF.facturx` + ready templates | `docs/builtins/pdf.md`, `docs/builtins/pdf-templates.md` |
 | Email out (SMTP) / in (IMAP, POP3) | `soli generate mailer`, `Imap`, `Pop3` | `docs/mailer.md`, `docs/builtins.md` → IMAP |
 | Background jobs, cron | `app/jobs/`, `Cron`, `static cron` | `docs/jobs.md` |
 | Real-time: WebSockets, presence | WebSocket routes + presence | `docs/websockets.md` |
@@ -113,6 +113,7 @@ may still exist under another name — try a synonym before writing it by hand.
 | HTTP client, SOAP, JSON, Markdown, TOML/YAML | `HTTP.*`, `SOAP`, `JSON`, `Markdown`, `Toml`, `Yaml` | `docs/builtins.md` |
 | XML: parse, query (`find`, an XPath subset), build, stream large files | `Xml.parse`, `node.find` / `xpath`, `Xml.build`, `Xml.each` / `Xml.reader` | `docs/xml.md` |
 | Legacy text encodings, Base64 | `Encoding`, `Base64` | `docs/encoding.md`, `docs/base64.md` |
+| Binary values, path strings, zip archives | `Bytes`, `Path.join` / `Path.dirname`, `Zip.entries` / `Zip.read` / `Zip.create` | `docs/bytes.md` |
 | Metrics, structured logs, traces | opt-in via env | `docs/observability.md` |
 | Error tracking (Sentry-like, self-hosted) | on by default: failed requests grouped at `/__soli/errors` | `docs/observability.md` → Error tracking |
 | Slow query log | on by default (≥ 200 ms, `SOLI_SLOW_QUERY_MS`): grouped by shape at `/__soli/slow_queries` | `docs/observability.md` → Slow queries |
@@ -337,7 +338,7 @@ Terse, idiomatic Soli. These rules hold across the app, specs included.
 - **No `()` on a zero-argument method call** — `Post.all`, `@post.save`,
   `name.trim.downcase`, `@greet`, `user.admin?`, `DateTime.utc.to_unix`.
   `Post.new` builds an instance like `Post.new()`. One place keeps them: a
-  **bare function** (`current_user()`, `session_destroy()`), so a call reads
+  **bare function** (`current_user()`, `csrf_token()`), so a call reads
   as one — both engines call a zero-argument def, helper or builtin read bare,
   but a lambda kept in a variable needs them: production leaves a bare one
   uncalled.

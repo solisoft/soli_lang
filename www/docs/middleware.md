@@ -137,7 +137,7 @@ What a middleware returns decides what happens next:
 # order: 30
 # scope_only: true
 def require_session
-  return redirect("/login") if session_get("user_id").nil?
+  return redirect("/login") if Session.get("user_id").nil?
 
   req
 end

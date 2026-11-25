@@ -11,7 +11,7 @@
             Eight billing documents you can copy and put to work. Each one answers the same three questions &mdash; who, how much, by when &mdash; with a different structure, because a VAT-compliant invoice, a builder&rsquo;s quote and a metered subscription bill are not the same document wearing different colours.
         </p>
         <p class="text-sm text-gray-500 mt-3 max-w-3xl">
-            Every template is a single JSON file rendered by <code class="text-teal-300">pdf_render</code>. They live in <code>www/public/pdf-samples/</code>, and the previews below are the real engine output at 150&nbsp;DPI.
+            Every template is a single JSON file rendered by <code class="text-teal-300">PDF.render</code>. They live in <code>www/public/pdf-samples/</code>, and the previews below are the real engine output at 150&nbsp;DPI.
         </p>
     </div>
 
@@ -336,7 +336,7 @@
     <!-- Using them -->
     <section id="section-using" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">Using a template</h2>
-        <p class="text-gray-400 mb-4 max-w-3xl">Copy the two files into your project, swap the data for your records, and render. <code class="text-teal-300">pdf_response</code> returns a ready controller response; <code class="text-teal-300">pdf_render</code> gives you the base64 bytes to store.</p>
+        <p class="text-gray-400 mb-4 max-w-3xl">Copy the two files into your project, swap the data for your records, and render. <code class="text-teal-300">PDF.response</code> returns a ready controller response; <code class="text-teal-300">PDF.render</code> gives you the base64 bytes to store.</p>
         <pre data-filename="app/controllers/invoices_controller.sl"><code class="language-soli text-sm">def show
   let invoice = Invoice.find(params["id"])
 
@@ -344,7 +344,7 @@
   let template = slurp("pdf/invoice_compliant.template.json")
   let data     = { "data": invoice.to_render_hash() }.to_json()
 
-  return pdf_response(template, data, {
+  return PDF.response(template, data, {
     "filename": "invoice-#{invoice.number}.pdf",
     "title": "Invoice #{invoice.number}"
   })
@@ -361,7 +361,7 @@ end</code></pre>
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <h3 class="text-white font-semibold mb-2">You bring the XML</h3>
                 <p class="text-sm text-gray-400 mb-3">Your template, your data, your XML. You keep <strong>full control of the layout</strong>, which is what a compliance template needs.</p>
-                <pre class="!mt-0" data-filename="pdf_facturx"><code class="language-soli text-sm">let pdf = pdf_facturx(
+                <pre class="!mt-0" data-filename="PDF.facturx"><code class="language-soli text-sm">let pdf = PDF.facturx(
   template, data, xml,
   { "profile": "en16931" }
 )</code></pre>
@@ -369,7 +369,7 @@ end</code></pre>
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <h3 class="text-white font-semibold mb-2">The engine computes it</h3>
                 <p class="text-sm text-gray-400 mb-3">Give it a typed invoice and it derives the totals, the VAT breakdown <em>and</em> the XML. Less to get wrong &mdash; but read the caveat below.</p>
-                <pre class="!mt-0" data-filename="pdf_facturx_from_invoice"><code class="language-soli text-sm">let pdf = pdf_facturx_from_invoice(
+                <pre class="!mt-0" data-filename="PDF.facturx_from_invoice"><code class="language-soli text-sm">let pdf = PDF.facturx_from_invoice(
   template, invoice,
   { "profile": "en16931" }
 )</code></pre>
@@ -378,8 +378,8 @@ end</code></pre>
 
         <div class="tpl-note tpl-note-warn">
             <p class="font-semibold text-white text-sm mb-1">The typed-invoice route uses a different placeholder namespace</p>
-            <p class="text-sm text-gray-400 mb-2"><code>pdf_facturx_from_invoice</code> ignores your data file and builds its own, so a template written for <code>pdf_render</code> will not interpolate against it. It supplies <code>invoice.*</code> (<code>number</code>, <code>created_at</code>, <code>due_date</code>, <code>due_amount</code>, <code>payment_terms</code>, <code>type_label</code>), <code>company.*</code> and <code>customer.*</code> (<code>name</code>, <code>address</code>, <code>zipcode</code>, <code>city</code>, <code>country</code>, <code>phone</code>, <code>vat_number</code>, <code>registration</code> &mdash; the SIREN/SIRET), <code>items[]</code>, <code>discounts[]</code>, <code>charges[]</code>, <code>total.*</code>, <code>infos.text</code> and <code>payment.*</code>.</p>
-                <p class="text-sm text-gray-400">It does <strong>not</strong> expose a per-rate VAT breakdown array. If your template must print one &mdash; as the compliant invoice does &mdash; use <code>pdf_facturx</code> and supply the XML yourself. <a href="/pdf-samples/invoice_compliant.facturx.xml" class="text-teal-300 hover:underline">A ready CII XML</a> and a <a href="/pdf-samples/invoice_compliant.invoice.json" class="text-teal-300 hover:underline">typed invoice</a> for that sample are both included so you can compare the two routes.</p>
+            <p class="text-sm text-gray-400 mb-2"><code>PDF.facturx_from_invoice</code> ignores your data file and builds its own, so a template written for <code>PDF.render</code> will not interpolate against it. It supplies <code>invoice.*</code> (<code>number</code>, <code>created_at</code>, <code>due_date</code>, <code>due_amount</code>, <code>payment_terms</code>, <code>type_label</code>), <code>company.*</code> and <code>customer.*</code> (<code>name</code>, <code>address</code>, <code>zipcode</code>, <code>city</code>, <code>country</code>, <code>phone</code>, <code>vat_number</code>, <code>registration</code> &mdash; the SIREN/SIRET), <code>items[]</code>, <code>discounts[]</code>, <code>charges[]</code>, <code>total.*</code>, <code>infos.text</code> and <code>payment.*</code>.</p>
+                <p class="text-sm text-gray-400">It does <strong>not</strong> expose a per-rate VAT breakdown array. If your template must print one &mdash; as the compliant invoice does &mdash; use <code>PDF.facturx</code> and supply the XML yourself. <a href="/pdf-samples/invoice_compliant.facturx.xml" class="text-teal-300 hover:underline">A ready CII XML</a> and a <a href="/pdf-samples/invoice_compliant.invoice.json" class="text-teal-300 hover:underline">typed invoice</a> for that sample are both included so you can compare the two routes.</p>
         </div>
 
         <p class="text-gray-400 mt-5 text-sm">Both routes reject the <code>password</code> and <code>pdfa</code> options &mdash; the output is already PDF/A-3b. Full reference in <a href="/docs/builtins/pdf#section-facturx" class="text-teal-300 hover:underline">PDF &amp; Factur-X</a>.</p>
@@ -391,7 +391,7 @@ end</code></pre>
         <p class="text-gray-400 mb-4 max-w-3xl">The images on this page are committed artifacts rendered from the sample files. After editing a template, regenerate them:</p>
         <pre data-filename="shell"><code class="language-bash text-sm">scripts/gen_pdf_previews.sh                     # every sample
 scripts/gen_pdf_previews.sh invoice_minimal     # just one</code></pre>
-        <p class="text-gray-500 text-xs mt-3">Needs nothing but <code>soli</code> &mdash; the engine rasterises its own pages through <a href="/docs/builtins/pdf#section-preview" class="text-teal-300 hover:underline"><code>pdf_preview</code></a>. Renders page&nbsp;1 of each sample at 150&nbsp;DPI into <code>www/public/images/docs/pdf/</code>.</p>
+        <p class="text-gray-500 text-xs mt-3">Needs nothing but <code>soli</code> &mdash; the engine rasterises its own pages through <a href="/docs/builtins/pdf#section-preview" class="text-teal-300 hover:underline"><code>PDF.preview</code></a>. Renders page&nbsp;1 of each sample at 150&nbsp;DPI into <code>www/public/images/docs/pdf/</code>.</p>
     </section>
 
     <p class="text-sm text-gray-500">

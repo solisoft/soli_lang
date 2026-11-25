@@ -85,37 +85,37 @@ end</code></pre>
     <section id="section-pubsub" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">Many connections: pub/sub</h2>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-            <p class="text-gray-400 mb-3">The <code class="text-cyan-400">sse(...)</code>/<code class="text-cyan-400">stream(...)</code> blocks above hold a worker thread while they run &mdash; great for a finite job, but you don't want one worker per idle connection on a dashboard with thousands of viewers. For that, <strong class="text-white">subscribe</strong> instead: <code class="text-cyan-400">sse_subscribe(req, topic)</code> registers the connection and returns immediately (no worker held), and <code class="text-cyan-400">sse_broadcast(topic, data, event?)</code> fans an event out to every subscriber &mdash; called from any controller, <a href="/docs/builtins/jobs" class="text-amber-400 hover:text-amber-300">job</a>, or model callback.</p>
+            <p class="text-gray-400 mb-3">The <code class="text-cyan-400">sse(...)</code>/<code class="text-cyan-400">stream(...)</code> blocks above hold a worker thread while they run &mdash; great for a finite job, but you don't want one worker per idle connection on a dashboard with thousands of viewers. For that, <strong class="text-white">subscribe</strong> instead: <code class="text-cyan-400">Channel.subscribe(req, topic)</code> registers the connection and returns immediately (no worker held), and <code class="text-cyan-400">Channel.sse_broadcast(topic, data, event?)</code> fans an event out to every subscriber &mdash; called from any controller, <a href="/docs/builtins/jobs" class="text-amber-400 hover:text-amber-300">job</a>, or model callback.</p>
             <pre data-filename="app/controllers/notifications_controller.sl"><code class="language-soli text-sm"># Each browser holds a cheap async connection — not a worker.
 def subscribe(req)
-  sse_subscribe(req, "user:#{current_user.id}")
+  Channel.subscribe(req, "user:#{current_user.id}")
 end
 
 # Push from anywhere — a controller action, a background job, a callback.
 def notify(req)
-  reached = sse_broadcast("user:#{params["id"]}", params["msg"], "alert")
+  reached = Channel.sse_broadcast("user:#{params["id"]}", params["msg"], "alert")
   render_json({ "delivered": reached })
 end</code></pre>
             <pre data-filename="Client (JavaScript)"><code class="language-bash text-sm">const es = new EventSource("/notifications/subscribe")
 es.addEventListener("alert", e =&gt; toast(e.data))</code></pre>
-            <p class="text-gray-400 mt-3 text-sm">A subscription costs an async task, not a thread &mdash; one worker can hold thousands of live subscribers. Disconnected clients are pruned on the next broadcast; <code class="text-cyan-400">sse_subscribers(topic)</code> returns the current count.</p>
+            <p class="text-gray-400 mt-3 text-sm">A subscription costs an async task, not a thread &mdash; one worker can hold thousands of live subscribers. Disconnected clients are pruned on the next broadcast; <code class="text-cyan-400">Channel.subscribers(topic)</code> returns the current count.</p>
         </div>
     </section>
 
     <!-- Unified broadcast -->
     <section id="section-broadcast" class="scroll-mt-20 mb-12">
-        <h2 class="text-2xl font-bold text-white mb-4">One call, both transports: <code class="text-amber-400">broadcast</code></h2>
+        <h2 class="text-2xl font-bold text-white mb-4">One call, both transports: <code class="text-amber-400">Channel.broadcast</code></h2>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-            <p class="text-gray-400 mb-3"><code class="text-cyan-400">broadcast(channel, payload)</code> fans <code class="text-cyan-400">payload</code> out to <strong class="text-white">both</strong> the <a href="/docs/core-concepts/websockets" class="text-amber-400 hover:text-amber-300">WebSocket</a> channel and the SSE topic of the same name &mdash; so a page listens over whichever transport it uses and you publish once. Non-string payloads auto-serialize to JSON; it returns the SSE subscriber count. Call it from any controller, job, or model callback.</p>
+            <p class="text-gray-400 mb-3"><code class="text-cyan-400">Channel.broadcast(channel, payload)</code> fans <code class="text-cyan-400">payload</code> out to <strong class="text-white">both</strong> the <a href="/docs/core-concepts/websockets" class="text-amber-400 hover:text-amber-300">WebSocket</a> channel and the SSE topic of the same name &mdash; so a page listens over whichever transport it uses and you publish once. Non-string payloads auto-serialize to JSON; it returns the SSE subscriber count. Call it from any controller, job, or model callback.</p>
             <pre data-filename="app/controllers/posts_controller.sl"><code class="language-soli text-sm">def create(req)
   post = Post.create(permit(params, {"title": true}))
   # Reaches WS clients in room "posts" AND SSE subscribers of topic "posts".
-  broadcast("posts", { "event": "created", "id": post.id, "title": post.title })
+  Channel.broadcast("posts", { "event": "created", "id": post.id, "title": post.title })
   redirect("/posts/#{post.id}")
 end</code></pre>
             <p class="text-gray-400 mt-3">Models carry a shortcut: <code class="text-cyan-400">Post.broadcast(payload)</code> publishes to the model's collection channel (<code class="text-cyan-400">"posts"</code>) &mdash; ideal in an <code class="text-cyan-400">after_save</code> callback so every write pushes a change event to subscribed clients. This is a general pub/sub primitive; for a LiveView that re-renders on writes, prefer <a href="/docs/core-concepts/liveview#reactive-live-queries" class="text-amber-400 hover:text-amber-300">reactive live queries</a> instead.</p>
             <h3 id="across-instances" class="text-lg font-semibold text-white mt-6 mb-2">Across instances</h3>
-            <p class="text-gray-400">Subscribers live in the process that accepted them. With more than one <code class="text-cyan-400">soli serve</code> instance, set <code class="text-cyan-400">SOLI_REALTIME_BUS=solidb</code> (or <code class="text-cyan-400">solikv</code>) and <code class="text-cyan-400">broadcast</code>, <code class="text-cyan-400">Model.broadcast</code> and <code class="text-cyan-400">sse_broadcast</code> reach the subscribers of every instance (and a job in <code class="text-cyan-400">soli worker</code> reaches them too) &mdash; see <a href="/docs/core-concepts/websockets#running-more-than-one-instance" class="text-amber-400 hover:text-amber-300">Running more than one instance</a>. The count they return stays this process's, and so does <code class="text-cyan-400">sse_subscribers</code>. <code class="text-cyan-400">broadcast(channel, payload, {"local": true})</code> keeps one message home. <code class="text-cyan-400">HTTP.stream_to</code> topics are not carried by the bus: a stream belongs to the request that started it, and its token rate would put every delta on the bus.</p>
+            <p class="text-gray-400">Subscribers live in the process that accepted them. With more than one <code class="text-cyan-400">soli serve</code> instance, set <code class="text-cyan-400">SOLI_REALTIME_BUS=solidb</code> (or <code class="text-cyan-400">solikv</code>) and <code class="text-cyan-400">Channel.broadcast</code>, <code class="text-cyan-400">Model.broadcast</code> and <code class="text-cyan-400">Channel.sse_broadcast</code> reach the subscribers of every instance (and a job in <code class="text-cyan-400">soli worker</code> reaches them too) &mdash; see <a href="/docs/core-concepts/websockets#running-more-than-one-instance" class="text-amber-400 hover:text-amber-300">Running more than one instance</a>. The count they return stays this process's, and so does <code class="text-cyan-400">Channel.subscribers</code>. <code class="text-cyan-400">Channel.broadcast(channel, payload, {"local": true})</code> keeps one message home. <code class="text-cyan-400">HTTP.stream_to</code> topics are not carried by the bus: a stream belongs to the request that started it, and its token rate would put every delta on the bus.</p>
         </div>
     </section>
 
@@ -123,7 +123,7 @@ end</code></pre>
     <section id="section-model-answer" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">Streaming a model&rsquo;s answer to a page</h2>
         <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-            <p class="text-gray-400 mb-3">A model&rsquo;s answer arrives in pieces over minutes. Reading it in a <code class="text-amber-400">sse</code> block or a job holds a thread the whole time. Hand it to <a href="/docs/builtins/http#def-http-stream-to" class="text-amber-400 hover:text-amber-300"><code class="text-amber-400">HTTP.stream_to</code></a> instead: it reads the answer on the HTTP runtime, broadcasts each new piece to a topic as a <code class="text-amber-400">delta</code> event, and enqueues a job with the whole text at the end. The page subscribes to the topic with <code class="text-amber-400">sse_subscribe</code>, and nothing waits in between.</p>
+            <p class="text-gray-400 mb-3">A model&rsquo;s answer arrives in pieces over minutes. Reading it in a <code class="text-amber-400">sse</code> block or a job holds a thread the whole time. Hand it to <a href="/docs/builtins/http#def-http-stream-to" class="text-amber-400 hover:text-amber-300"><code class="text-amber-400">HTTP.stream_to</code></a> instead: it reads the answer on the HTTP runtime, broadcasts each new piece to a topic as a <code class="text-amber-400">delta</code> event, and enqueues a job with the whole text at the end. The page subscribes to the topic with <code class="text-amber-400">Channel.subscribe</code>, and nothing waits in between.</p>
             <pre data-filename="Example"><code class="language-soli text-sm">HTTP.stream_to("POST", url, headers, body,
   {"format": "anthropic", "topic": "chat:#{chat._key}", "job": "AnswerDoneJob", "args": {"chat": chat._key}})</code></pre>
         </div>
@@ -139,7 +139,7 @@ end</code></pre>
                 <div><strong class="text-white"><a href="/docs/core-concepts/liveview" class="text-amber-400 hover:text-amber-300">Live View</a></strong> &mdash; server-rendered reactive UI without writing client JS.</div>
             </div>
             <div class="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 mt-4">
-                <p class="text-sm text-amber-200"><strong>Pick the path by lifetime.</strong> A <code>sse</code>/<code>stream</code> <em>block</em> holds one worker thread until it finishes &mdash; use it for finite, active streams (an agent run, an export), and size the pool for how many run at once. For many long-lived, mostly-idle connections, use <code>sse_subscribe</code>/<code>sse_broadcast</code>: those are async and don't consume a worker per connection. Backpressure is automatic in both (a slow client pauses a block; for broadcasts a full client drops the message but keeps its subscription).</p>
+                <p class="text-sm text-amber-200"><strong>Pick the path by lifetime.</strong> A <code>sse</code>/<code>stream</code> <em>block</em> holds one worker thread until it finishes &mdash; use it for finite, active streams (an agent run, an export), and size the pool for how many run at once. For many long-lived, mostly-idle connections, use <code>Channel.subscribe</code>/<code>Channel.sse_broadcast</code>: those are async and don't consume a worker per connection. Backpressure is automatic in both (a slow client pauses a block; for broadcasts a full client drops the message but keeps its subscription).</p>
             </div>
         </div>
     </section>

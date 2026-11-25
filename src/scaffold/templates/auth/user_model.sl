@@ -59,7 +59,7 @@ const AUTH_IMPERSONATION_SECONDS = auth_env_int("AUTH_IMPERSONATION_SECONDS", 36
 def auth_own_session?(req)
   return false unless (req["api_token"] rescue nil).nil?
 
-  session_get("impersonator_id").to_s.blank?
+  Session.get("impersonator_id").to_s.blank?
 end
 
 # Did this session sign in within AUTH_FRESH_SECONDS? (`auth_time` is set by
@@ -67,7 +67,7 @@ end
 # impersonation, and not by the second factor passed after either — that
 # re-opens the session within the sign-in it had, and keeps its time.)
 def auth_fresh_sign_in?
-  signed_in_at = (session_get("auth_time") ?? 0).to_i
+  signed_in_at = (Session.get("auth_time") ?? 0).to_i
   signed_in_at > 0 && DateTime.utc.to_unix - signed_in_at <= AUTH_FRESH_SECONDS
 end
 
@@ -87,7 +87,7 @@ end
 # Make the session `user`'s, as a sign-in that happened just now. Every action
 # that signs someone in goes through here.
 #
-# `session_regenerate` gives the session a new id and keeps its data: without
+# `Session.regenerate` gives the session a new id and keeps its data: without
 # the deletions below, what the previous occupant of the session left behind
 # became the new user's. An impersonation, whose "stop" then returned the
 # administrator's session. A two-factor marker (`off:<user>`, `ok:<user>`)
@@ -107,53 +107,53 @@ end
 # acting as them). The first time, the account is marked as used
 # (`User#never_signed_in?`).
 def auth_open_session(user, same_sign_in = false, by_owner = true)
-  sign_in_ends = same_sign_in ? session_get("sign_in_expires_at") : nil
+  sign_in_ends = same_sign_in ? Session.get("sign_in_expires_at") : nil
   # The moment the sign-in this continues began — none, for a session the
   # remember-me cookie restored: a second factor passed after it proves the
   # device, not that the password was typed.
-  signed_in_at = same_sign_in ? session_get("auth_time") : DateTime.utc.to_unix
+  signed_in_at = same_sign_in ? Session.get("auth_time") : DateTime.utc.to_unix
   # A provider sign-in vouches for a moment (`OauthSso.mark_authenticated`):
   # within the same sign-in, and for this same user, it stays — an account
   # with no password has no other way to prove itself before linking.
   vouched_at = nil
-  if same_sign_in && by_owner && session_get("oauth_reauth_user").to_s == user._key.to_s
-    vouched_at = session_get("oauth_reauth_at")
+  if same_sign_in && by_owner && Session.get("oauth_reauth_user").to_s == user._key.to_s
+    vouched_at = Session.get("oauth_reauth_at")
   end
-  session_regenerate()
+  Session.regenerate
   auth_forget_impersonation()
-  session_delete("two_factor")
+  Session.delete("two_factor")
   # "Remember me", ticked at a password step that waits for a second factor.
-  session_delete("remember_wanted")
+  Session.delete("remember_wanted")
   # An authenticator set-up started by the previous occupant: its secret is
   # theirs to see, not the next sign-in's in the same browser.
-  session_delete("two_factor_setup")
-  session_delete("sign_in_expires_at")
+  Session.delete("two_factor_setup")
+  Session.delete("sign_in_expires_at")
   # Who re-authenticated to link a provider, and for whom: the previous
   # occupant's, not this user's.
-  session_delete("oauth_link_user")
-  session_delete("oauth_reauth_user")
-  session_delete("oauth_reauth_at")
-  session_set("sign_in_expires_at", sign_in_ends) unless sign_in_ends.nil?
+  Session.delete("oauth_link_user")
+  Session.delete("oauth_reauth_user")
+  Session.delete("oauth_reauth_at")
+  Session.set("sign_in_expires_at", sign_in_ends) unless sign_in_ends.nil?
   unless vouched_at.nil?
-    session_set("oauth_reauth_user", user._key)
-    session_set("oauth_reauth_at", vouched_at)
+    Session.set("oauth_reauth_user", user._key)
+    Session.set("oauth_reauth_at", vouched_at)
   end
-  session_set("user_id", user._key)
+  Session.set("user_id", user._key)
   # When this sign-in happened: the OIDC provider reads it for max_age /
   # auth_time, and adding a way into the account asks for a recent one.
-  signed_in_at.nil? ? session_delete("auth_time") : session_set("auth_time", signed_in_at)
+  signed_in_at.nil? ? Session.delete("auth_time") : Session.set("auth_time", signed_in_at)
   # Stamped so a later password reset can invalidate this session.
-  session_set("session_version", user.current_session_version)
+  Session.set("session_version", user.current_session_version)
   user.mark_signed_in if by_owner
 end
 
 # A sign-in is a new person: whatever impersonation the session carried is
-# over. `session_regenerate` keeps the session's data, so every action that
+# over. `Session.regenerate` keeps the session's data, so every action that
 # opens a session calls this.
 def auth_forget_impersonation
-  session_delete("impersonator_id")
-  session_delete("impersonator_version")
-  session_delete("impersonation_started_at")
+  Session.delete("impersonator_id")
+  Session.delete("impersonator_version")
+  Session.delete("impersonation_started_at")
 end
 
 # Who may create an account at /signup, from AUTH_SIGNUP:
@@ -253,7 +253,7 @@ def auth_remember(user)
   # `secure` matters more here than on the session cookie: this one is a
   # 30-day bearer credential, and without the flag a single plaintext
   # request to the same host hands it to anyone on the path.
-  set_cookie("remember_token", "#{user._key}:#{token}", {
+  Cookie.set("remember_token", "#{user._key}:#{token}", {
     "max_age": AUTH_REMEMBER_DAYS * 86400,
     "http_only": true,
     "same_site": "Lax",

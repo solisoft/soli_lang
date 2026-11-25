@@ -370,6 +370,7 @@ const PRELUDE_NAMES: &[&[&str]] = &[
         "AttachmentsController",
     ],
     &["SoliEventStoreRecord", "SoliEventSnapshot", "EventSourced"],
+    &["Policy"],
 ];
 
 /// Preludes the runtime evaluates as Soli source.
@@ -384,6 +385,7 @@ const SOLI_PRELUDES: &[&str] = &[
     crate::serve::uploads_prelude::UPLOADS_PRELUDE_SOURCE,
     crate::serve::uploads_prelude::UPLOADS_HELPERS_SOURCE,
     crate::interpreter::events::EVENT_SOURCED_PRELUDE,
+    crate::interpreter::builtins::policy::POLICY_PRELUDE,
 ];
 
 /// The top-level functions and classes one Soli prelude declares.

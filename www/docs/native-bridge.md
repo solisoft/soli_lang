@@ -81,7 +81,7 @@ partial answer — it is the whole one.
 One helper in your layout names the channel this page listens to:
 
 ```erb
-<% user_id = session_get("user_id") %>
+<% user_id = Session.get("user_id") %>
 <%- native_channel("user:#{str(user_id)}") rescue "" unless user_id.nil? %>
 ```
 
@@ -121,7 +121,7 @@ Available when a shell injects the host object (or as a thin web fallback for so
 
 Channel names are yours to choose — `user:42`, `room:7`, `deploy:prod`. They may not contain `.`,
 `|` or control characters, and are namespaced internally so they can never collide with, or be
-reached through, an app's own `sse_broadcast` topics.
+reached through, an app's own `Channel.sse_broadcast` topics.
 
 ## Capabilities
 

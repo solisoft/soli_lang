@@ -59,7 +59,7 @@ class PostsController < Controller
 
     # Runs on every action.
     this.before_action = fn(req) {
-      @current_user = session_get("user_id")
+      @current_user = Session.get("user_id")
       req
     }
 
@@ -462,23 +462,25 @@ per request); excess files are dropped before the action runs.
 
 ## Cookies and sessions
 
-Cookies are a read-only global; write them with `set_cookie`:
+The `cookies` hash is the parsed request header. Write a response cookie
+with `Cookie.set` (`set_cookie` still runs and warns once per process):
 
 ```soli
-@theme = cookies["theme"] ?? "light"     # read
-set_cookie("theme", "dark")              # write (Path=/)
+@theme = cookies["theme"] ?? "light"     # read the request
+Cookie.set("theme", "dark")              # write (Path=/)
 ```
 
-Sessions are read/write via builtins (storage backend configured in
-`config/application.sl`):
+Sessions are `Session` (storage backend configured in
+`config/application.sl`). The `session_*` functions still run and each warns
+once per process.
 
 ```soli
-session_set("user_id", user.id)
-uid = session_get("user_id")        # nil if not set
-session_has("user_id")              # bool
-session_delete("user_id")
-session_regenerate                  # after a successful login (security)
-session_destroy                     # on logout
+Session.set("user_id", user.id)
+uid = Session.get("user_id")        # nil if not set
+Session.has("user_id")              # bool
+Session.delete("user_id")
+Session.regenerate                  # after a successful login (security)
+Session.destroy                     # on logout
 ```
 
 ## Named route helpers

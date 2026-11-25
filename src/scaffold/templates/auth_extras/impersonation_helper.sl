@@ -2,12 +2,12 @@
 
 # True while an administrator is acting as the signed-in user.
 def impersonating?
-  session_get("impersonator_id").to_s.present?
+  Session.get("impersonator_id").to_s.present?
 end
 
 # The administrator behind the session, or nil.
 def impersonator
-  admin_id = session_get("impersonator_id").to_s
+  admin_id = Session.get("impersonator_id").to_s
   return nil if admin_id.blank?
 
   User.find_by("_key", admin_id)

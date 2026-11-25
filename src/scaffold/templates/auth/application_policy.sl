@@ -11,50 +11,18 @@
 # raises a 403; otherwise it returns the record. You can also pass an explicit
 # action: `authorize(post, "update")`.
 #
-# Policies default to DENY — subclasses opt in by overriding the predicates
-# they want to allow. See app/policies/user_policy.sl for a worked example.
+# Deny by default. `Policy` answers `index?`, `show?`, `create?`, `update?`
+# and `destroy?` with false. `new?` follows `create?`, `edit?` follows
+# `update?`, and `signed_in?` is a present user. A subclass allows an action
+# by overriding its predicate. See app/policies/user_policy.sl.
 
-class ApplicationPolicy
+class ApplicationPolicy < Policy
   user: Any
   record: Any
 
   new(context)
     @user = context["user"]
     @record = context["record"]
-  end
-
-  def index?
-    false
-  end
-
-  def show?
-    false
-  end
-
-  def create?
-    false
-  end
-
-  # `new?` mirrors `create?` and `edit?` mirrors `update?` by convention.
-  def new?
-    @create?
-  end
-
-  def update?
-    false
-  end
-
-  def edit?
-    @update?
-  end
-
-  def destroy?
-    false
-  end
-
-  # Handy in subclasses: any signed-in user.
-  def signed_in?
-    !@user.nil?
   end
 end
 

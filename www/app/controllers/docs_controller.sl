@@ -867,6 +867,10 @@ def builtins_file
   render_docs("docs/builtins/file", "File Class", "builtins", "file")
 end
 
+def builtins_bytes
+  render_docs("docs/builtins/bytes", "Bytes, Path and Zip", "builtins", "bytes")
+end
+
 def builtins_spreadsheet
   render_docs("docs/builtins/spreadsheet", "Spreadsheet Functions", "builtins", "spreadsheet")
 end

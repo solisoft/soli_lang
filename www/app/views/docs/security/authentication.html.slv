@@ -38,7 +38,7 @@
             Creating Tokens
         </h2>
         <p class="text-gray-400 mb-6">
-            Use the <code class="text-amber-300">jwt_sign</code> function to create a signed token. You can include any custom claims in the payload.
+            Use <code class="text-amber-300">JWT.sign</code> to create a signed token. <code class="text-amber-300">jwt_sign</code> is the same call, deprecated: it still runs, and warns once per process. You can include any custom claims in the payload.
         </p>
         
         <!-- Terminal Window -->
@@ -61,9 +61,9 @@ payload = {
 # 2. Get your secret key securely
 secret = getenv("JWT_SECRET")
 # 3. Sign the token (default algorithm: HS256)
-token = jwt_sign(payload, secret)
+token = JWT.sign(payload, secret)
 # Option: Set expiration (e.g., 1 hour from now)
-token_with_exp = jwt_sign(
+token_with_exp = JWT.sign(
   payload, 
   secret, 
   { "expires_in": 3600 }
@@ -79,7 +79,7 @@ token_with_exp = jwt_sign(
             Verifying Tokens
         </h2>
         <p class="text-gray-400 mb-6">
-            Verify incoming tokens using <code class="text-orange-300">jwt_verify</code>. This function checks the signature and expiration automatically. Its options (<code>audience</code>, <code>issuer</code>, <code>subject</code>, <code>authorized_party</code>, <code>leeway</code>, <code>algorithm</code>, <code>key</code>) are listed under <a href="/docs/builtins/jwt#def-jwt-verify" class="text-orange-400 hover:text-orange-300">jwt_verify</a>; any other name (<code>aud</code> for <code>audience</code>, say) raises instead of being skipped.
+            Verify incoming tokens using <code class="text-orange-300">JWT.verify</code>. This function checks the signature and expiration automatically. Its options (<code>audience</code>, <code>issuer</code>, <code>subject</code>, <code>authorized_party</code>, <code>leeway</code>, <code>algorithm</code>, <code>key</code>) are listed under <a href="/docs/builtins/jwt#def-jwt-verify" class="text-orange-400 hover:text-orange-300">JWT.verify</a>; any other name (<code>aud</code> for <code>audience</code>, say) raises instead of being skipped.
         </p>
 
         <div class="rounded-xl overflow-hidden bg-[#1e1e1e] border border-white/10 shadow-2xl">
@@ -90,7 +90,7 @@ token_with_exp = jwt_sign(
                 <span class="ml-2 text-xs text-gray-500 font-mono">middleware/auth.sl</span>
             </div>
             <div class="p-6 overflow-x-auto">
-<pre><code class="language-soli text-sm">result = jwt_verify(token, secret)
+<pre><code class="language-soli text-sm">result = JWT.verify(token, secret)
 if result["error"] == true
   # Handle invalid token
   print("Auth Error:", result["message"])
@@ -187,7 +187,7 @@ or a secure secrets manager. If your secret is compromised, all issued tokens be
             sign-in is followed by the challenge; the generator prints the one line to add to
             <code>passkey_sessions#create</code>:
         </p>
-        <pre data-filename="app/controllers/passkey_sessions_controller.sl"><code class="language-soli text-sm">session_set("two_factor", "ok:#{user._key}") if result["user_verified"]</code></pre>
+        <pre data-filename="app/controllers/passkey_sessions_controller.sl"><code class="language-soli text-sm">Session.set("two_factor", "ok:#{user._key}") if result["user_verified"]</code></pre>
         <div class="callout callout-warning mt-4">
             <p class="text-yellow-200/80 text-sm mb-0">
                 <strong>Limits.</strong> Authenticator apps only: no SMS or email codes, and no &ldquo;trust this device for 30 days&rdquo;.
@@ -331,7 +331,7 @@ end</code></pre>
             <li><code>POST /passkeys/login/options</code> returns request options with an empty <code>allowCredentials</code> (discoverable credentials: no username needed) and keeps the challenge in the session under <code>webauthn_challenge</code>, tagged with its purpose and an expiry (<code>WEBAUTHN_CHALLENGE_TTL</code>, 300&nbsp;s).</li>
             <li>The browser signs it; <code>passkeys.js</code> posts the credential's <code>toJSON()</code>.</li>
             <li><code>POST /passkeys/login</code> takes the challenge out of the session <em>before</em> verifying (a replay or a second tab fails closed), finds the passkey by <code>credential_id</code> with <code>find_by</code>, verifies it with <code>WebAuthn.verify_authentication</code>, and checks that the user handle is present and names the same account. The answered challenge is then spent (<code>WebauthnChallenge.spend</code>: its digest is a row&rsquo;s key, so one use creates the row): copies of the request sent together, or the request sent again with the cookie it came with under the <code>cookie</code> session driver, sign nobody in a second time.</li>
-            <li>It then opens the session exactly as the password login does: the per-IP throttle (<code>AUTH_ATTEMPTS_PER_IP</code>), the locked and confirmed gates, <code>session_regenerate()</code>, <code>user_id</code> and <code>session_version</code>.</li>
+            <li>It then opens the session exactly as the password login does: the per-IP throttle (<code>AUTH_ATTEMPTS_PER_IP</code>), the locked and confirmed gates, <code>Session.regenerate</code>, <code>user_id</code> and <code>session_version</code>.</li>
         </ol>
         <p class="text-gray-400 mb-4">
             A single-sign-on-only account (<a href="/docs/security/saml" class="text-amber-400 hover:text-amber-300">SAML</a>, <code>user.sso_only?</code>) registers

@@ -116,7 +116,7 @@ class SessionsController < Controller
       # ends every session of the account.
       two_factor = const_get("TwoFactor")
       if !two_factor.nil? && two_factor.enabled?(user)
-        session_set("remember_wanted", user._key)
+        Session.set("remember_wanted", user._key)
       else
         auth_remember(user)
       end
@@ -127,7 +127,7 @@ class SessionsController < Controller
 
   # DELETE /logout
   def destroy
-    user_id = session_get("user_id")
+    user_id = Session.get("user_id")
     # The remember-me token is its owner's to drop: not an administrator's
     # acting as them, nor a visitor's who only got as far as the password,
     # nor a session a password reset has already ended. The account is read
@@ -145,13 +145,13 @@ class SessionsController < Controller
       end
     end
     # Expire the remember-me cookie immediately.
-    set_cookie("remember_token", "", {
+    Cookie.set("remember_token", "", {
       "max_age": 0,
       "http_only": true,
       "same_site": "Lax",
       "secure": true
     })
-    session_destroy()
+    Session.destroy
     redirect("/login")
   end
 
@@ -161,12 +161,12 @@ class SessionsController < Controller
   # is current (no reset since), and where the app has two-factor and the
   # account turned it on, the session passed the challenge.
   def _fully_signed_in?(user)
-    return false if session_get("session_version").to_i < user.current_session_version
+    return false if Session.get("session_version").to_i < user.current_session_version
 
     two_factor = const_get("TwoFactor")
     return true if two_factor.nil? || !two_factor.enabled?(user)
 
-    session_get("two_factor").to_s == "ok:#{user._key}"
+    Session.get("two_factor").to_s == "ok:#{user._key}"
   end
 
   # Does this request carry `user`'s remember-me token — the current one,

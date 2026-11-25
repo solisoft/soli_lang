@@ -209,7 +209,7 @@ end
 
 ```soli
 this.before_action = fn(req) {
-  return redirect("/login") if session_get("user_id").nil?
+  return redirect("/login") if Session.get("user_id").nil?
 
   halt(403, "Forbidden") unless current_user().admin?   # raises: no `return` needed
   req  # Continue to action
@@ -321,51 +321,51 @@ def show
 end
 ```
 
-### set_cookie(name, value, options?)
+### Cookie.set(name, value, options?)
 
 Write a response cookie. The cookie is sent back to the client as a `Set-Cookie` header:
 
 ```soli
 def login
-  set_cookie("session_id", "abc123");
-  set_cookie("theme", "dark", {"max_age": 86400, "http_only": true, "secure": true, "same_site": "Lax"});
+  Cookie.set("session_id", "abc123");
+  Cookie.set("theme", "dark", {"max_age": 86400, "http_only": true, "secure": true, "same_site": "Lax"});
 
   {"status": 200, "body": "Logged in"}
 end
 ```
 
-The options hash controls the cookie attributes: `path` (default `"/"`), `max_age` (seconds; `0` expires the cookie immediately), `expires` (RFC-1123 date), `http_only`, `secure`, `same_site` (`"Lax"`/`"Strict"`/`"None"`) and `domain` — plus the `signed`/`encrypted` sealing options below. Unknown keys raise, so a typo can't silently weaken a cookie.
+The options hash controls the cookie attributes: `path` (default `"/"`), `max_age` (seconds; `0` expires the cookie immediately), `expires` (RFC-1123 date), `http_only`, `secure`, `same_site` (`"Lax"`/`"Strict"`/`"None"`) and `domain`. Unknown keys raise, so a typo can't silently weaken a cookie. Seal a value you need to trust with `Cookie.signed` or `Cookie.encrypted` below, not with a flag on `Cookie.set`.
 
 `Secure` is added for you in two cases beyond asking for it: when `same_site` is `"None"` (browsers drop such a cookie without it, so the alternative is one that silently never arrives), and when the operator has set `SOLI_FORCE_SECURE_COOKIES=1` / called `enable_force_secure_cookies()` — that switch covers every cookie the process emits, not just the framework's session cookie. Set `"secure": true` explicitly anyway on anything that authenticates: a deployment that forgot the switch shouldn't be what decides whether a long-lived credential travels in the clear.
 
-Cookies set via `set_cookie` are visible in templates and subsequent reads within the same request through the `cookies` global; `read_cookie` sees them too.
+Cookies set via `Cookie.set` are visible in templates and subsequent reads within the same request through the `cookies` global; `Cookie.read` sees them too.
 
 ### Signed and encrypted cookies
 
-Bare cookies are attacker-writable: anything the client sends in the `Cookie` header lands in `cookies` verbatim. When a cookie carries a value you need to *trust* — or one the client shouldn't be able to read — seal it with the `signed` or `encrypted` option and read it back with `read_cookie`:
+Bare cookies are attacker-writable: anything the client sends in the `Cookie` header lands in `cookies` verbatim. When a cookie carries a value you need to *trust* — or one the client shouldn't be able to read — write and read it with `Cookie.encrypted` or `Cookie.signed`. One argument reads. Two or three write, and the mode is forced on. Two arguments whose second is a hash of cookie options only (`Cookie.signed("uid", {"max_age": 60})`) raise rather than overwrite the cookie with the options; to store such a hash as the value, pass options too: `Cookie.signed(name, value, {})`. For example:
 
 ```soli
 def remember_theme
   # Encrypted: opaque on the client, accepts any JSON-serializable value.
-  set_cookie("prefs", {"theme": "dark", "cols": [1, 2]}, {"encrypted": true, "max_age": 86400});
+  Cookie.encrypted("prefs", {"theme": "dark", "cols": [1, 2]}, {"max_age": 86400})
 
   # Signed: readable on the client but tamper-proof.
-  set_cookie("uid", 42, {"signed": true});
+  Cookie.signed("uid", 42)
 end
 
 def show
-  prefs = read_cookie("prefs", {"encrypted": true});   # {"theme": "dark", "cols": [1, 2]}
-  uid = read_cookie("uid", {"signed": true});          # 42
-  raw = read_cookie("theme");                          # plain read, like cookies["theme"]
+  prefs = Cookie.encrypted("prefs")   # {"theme": "dark", "cols": [1, 2]}
+  uid = Cookie.signed("uid")          # 42
+  raw = Cookie.read("theme")          # plain read, like cookies["theme"]
 end
 ```
 
-The reader states the trust requirement: a bare cookie named `uid` that an attacker sets to `42` reads as `nil` through `read_cookie("uid", {"signed": true})` — only a value your server sealed verifies. Tampered, expired, forged or mode-mismatched values all read as `nil`, indistinguishable from an absent cookie.
+The reader states the trust requirement: a bare cookie named `uid` that an attacker sets to `42` reads as `nil` through `Cookie.signed("uid")` — only a value your server sealed verifies. Tampered, expired, forged or mode-mismatched values all read as `nil`, indistinguishable from an absent cookie. `Cookie.set(..., {"signed": true})` and `Cookie.read(name, {"signed": true})` still run and warn once.
 
 How it works:
 
 - Encrypted cookies are AES-256-GCM sealed (`enc.v1.` prefix); signed cookies are HMAC-SHA256 authenticated with the payload readable as base64url JSON (`sig.v1.` prefix).
-- Both keys are HKDF-derived from `SOLI_SESSION_SECRET` (32+ characters, same secret as the `cookie` session driver — rotating it invalidates all sealed cookies). Sealing without a secret raises; set the env var or call `session_configure({"secret": ...})`.
+- Both keys are HKDF-derived from `SOLI_SESSION_SECRET` (32+ characters, same secret as the `cookie` session driver — rotating it invalidates all sealed cookies). Sealing without a secret raises; set the env var or call `Session.configure({"secret": ...})`.
 - The cookie **name** is bound into the seal, so a validly-sealed value copied from one cookie into another reads as `nil`.
 - A `max_age` option is also embedded as an expiry *inside* the sealed payload — a captured cookie can't be replayed past its intended lifetime even if the client ignores the browser-level `Max-Age`.
 - `signed` and `encrypted` are mutually exclusive; the sealed value counts against the ~4KB cookie limit and oversize raises at write time.

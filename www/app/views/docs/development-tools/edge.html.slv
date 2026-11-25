@@ -394,7 +394,7 @@ soli edge dev . --runtime target/edge --pdf</code></pre>
         <pre data-filename="app/controllers/invoices_controller.sl"><code class="language-soli text-sm"># GET /invoices/:id.pdf
 def show(req)
   invoice = Invoice.find(params["id"])
-  pdf_response(InvoiceDocument.template.to_json, invoice.to_json)
+  PDF.response(InvoiceDocument.template.to_json, invoice.to_json)
 end</code></pre>
     </div>
     <p class="text-gray-400 mb-6">
@@ -404,11 +404,11 @@ end</code></pre>
         <table class="w-full text-sm text-left">
             <thead class="text-gray-300 border-b border-white/10"><tr><th class="py-3 px-4">Works</th><th class="py-3 px-4">Does not</th></tr></thead>
             <tbody class="text-gray-400">
-                <tr class="border-b border-white/5"><td class="py-3 px-4"><code>pdf_render</code>, <code>pdf_response</code>, <code>pdf_from_markdown</code>, <code>pdf_layout_map</code></td><td class="py-3 px-4"></td></tr>
-                <tr class="border-b border-white/5"><td class="py-3 px-4"><code>pdf_preview</code>, <code>pdf_preview_from_markdown</code>, <code>pdf_preview_response</code> as PNG (the default) or <code>"format": "jpeg"</code></td><td class="py-3 px-4"><code>"format": "webp"</code>: its encoder is C; <code>out_dir</code></td></tr>
-                <tr class="border-b border-white/5"><td class="py-3 px-4"><code>pdf_facturx</code>, <code>pdf_facturx_from_invoice</code>, <code>pdfa</code>, <code>password</code></td><td class="py-3 px-4"><code>stationery</code>, <code>attachments</code> and images given as a path</td></tr>
-                <tr class="border-b border-white/5"><td class="py-3 px-4"><code>pdf_merge</code>, <code>pdf_pages</code>, <code>pdf_stamp</code>, <code>pdf_text</code>, <code>pdf_attachments</code>, <code>pdf_extract_facturx</code> on base64</td><td class="py-3 px-4">the same on a path</td></tr>
-                <tr class="border-b border-white/5"><td class="py-3 px-4"><code>pdf_sign</code>, <code>pdf_verify</code> and the <code>sign</code> option, with the certificate and key as PEM strings (Worker secrets)</td><td class="py-3 px-4">PEM files</td></tr>
+                <tr class="border-b border-white/5"><td class="py-3 px-4"><code>PDF.render</code>, <code>PDF.response</code>, <code>PDF.from_markdown</code>, <code>PDF.layout_map</code></td><td class="py-3 px-4"></td></tr>
+                <tr class="border-b border-white/5"><td class="py-3 px-4"><code>PDF.preview</code>, <code>PDF.preview_from_markdown</code>, <code>PDF.preview_response</code> as PNG (the default) or <code>"format": "jpeg"</code></td><td class="py-3 px-4"><code>"format": "webp"</code>: its encoder is C; <code>out_dir</code></td></tr>
+                <tr class="border-b border-white/5"><td class="py-3 px-4"><code>PDF.facturx</code>, <code>PDF.facturx_from_invoice</code>, <code>pdfa</code>, <code>password</code></td><td class="py-3 px-4"><code>stationery</code>, <code>attachments</code> and images given as a path</td></tr>
+                <tr class="border-b border-white/5"><td class="py-3 px-4"><code>PDF.merge</code>, <code>PDF.pages</code>, <code>PDF.stamp</code>, <code>PDF.text</code>, <code>PDF.attachments</code>, <code>PDF.extract_facturx</code> on base64</td><td class="py-3 px-4">the same on a path</td></tr>
+                <tr class="border-b border-white/5"><td class="py-3 px-4"><code>PDF.sign</code>, <code>PDF.verify</code> and the <code>sign</code> option, with the certificate and key as PEM strings (Worker secrets)</td><td class="py-3 px-4">PEM files</td></tr>
                 <tr><td class="py-3 px-4">images from an <code>https</code> URL (through <code>fetch</code>, SSRF-checked) or a <code>data:</code> URI</td><td class="py-3 px-4">your own fonts, a monospaced face, CJK text</td></tr>
             </tbody>
         </table>
@@ -431,7 +431,7 @@ end</code></pre>
                 <tr class="border-b border-white/5"><td class="py-3 px-4">models on D1, PostgreSQL (Hyperdrive), or SoliDB over HTTP(S)</td><td class="py-3 px-4">MySQL, SQLite, the native SoliDB driver; transactions on D1</td></tr>
                 <tr class="border-b border-white/5"><td class="py-3 px-4">the <code>HTTP</code> class (<code>fetch</code>); <code>HTTP.parallel*</code> run one after another</td><td class="py-3 px-4"><code>--dev</code>: hot reload, dev bar, REPL</td></tr>
                 <tr class="border-b border-white/5"><td class="py-3 px-4">static files from <code>public/</code>; attachments on R2, with <code>Range</code> and image transforms</td><td class="py-3 px-4">Office, the <code>Image</code> class, <code>System.run</code></td></tr>
-                <tr><td class="py-3 px-4"><a href="#pdf" class="text-amber-400 hover:underline">PDF</a>, with <code>--pdf</code>: <code>pdf_render</code>, <code>pdf_response</code>, <code>pdf_from_markdown</code>, Factur-X, signatures, PNG and JPEG previews</td><td class="py-3 px-4">WebP previews, your own font files</td></tr>
+                <tr><td class="py-3 px-4"><a href="#pdf" class="text-amber-400 hover:underline">PDF</a>, with <code>--pdf</code>: <code>PDF.render</code>, <code>PDF.response</code>, <code>PDF.from_markdown</code>, Factur-X, signatures, PNG and JPEG previews</td><td class="py-3 px-4">WebP previews, your own font files</td></tr>
             </tbody>
         </table>
     </div>

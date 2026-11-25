@@ -109,7 +109,7 @@ fn write_component_class(app_path: &Path, rel: &str) -> Result<(), String> {
         "# Paired with app/views/components/{rel}.html.slv. The props passed to\n\
          # component(\"{rel}\", {{ ... }}) become fields; the template reaches the\n\
          # instance as `this` (e.g. `<%= this.heading() %>`).\n\
-         class {class_name}\n\
+         class {class_name} < Component\n\
          \x20 title: String\n\
          \n\
          \x20 # Runs before the template renders: derive what the view needs.\n\

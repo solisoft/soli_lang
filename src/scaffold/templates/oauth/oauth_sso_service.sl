@@ -41,25 +41,25 @@ class OauthSso
   # after this, sets it again.
   static def begin_state(provider)
     state = Crypto.random_hex(32)
-    session_set("oauth_state", state)
-    session_set("oauth_provider", provider)
-    session_delete("oauth_link_user")
+    Session.set("oauth_state", state)
+    Session.set("oauth_provider", provider)
+    Session.delete("oauth_link_user")
     state
   end
 
   # True when the callback `state` matches the one we issued.
   static def valid_state?(state)
     # Taken, not read: a state answers one callback.
-    expected = session_delete("oauth_state").to_s
+    expected = Session.delete("oauth_state").to_s
     expected.present? && state.to_s.present? && Crypto.secure_compare(expected, state.to_s)
   end
 
   static def clear_state
-    session_delete("oauth_state")
-    session_delete("oauth_provider")
-    session_delete("oauth_pkce_verifier")
-    session_delete("oauth_nonce")
-    session_delete("oauth_link_user")
+    Session.delete("oauth_state")
+    Session.delete("oauth_provider")
+    Session.delete("oauth_pkce_verifier")
+    Session.delete("oauth_nonce")
+    Session.delete("oauth_link_user")
   end
 
   # OpenID Connect `nonce`, for the providers whose id_token is read (Apple,
@@ -69,13 +69,13 @@ class OauthSso
   # sign-in cannot be slipped in.
   static def begin_nonce
     nonce = Crypto.random_hex(32)
-    session_set("oauth_nonce", nonce)
+    Session.set("oauth_nonce", nonce)
     nonce
   end
 
   # Refuse a token whose `nonce` is not the one this sign-in sent.
   static def check_nonce(claimed, provider)
-    expected = session_get("oauth_nonce").to_s
+    expected = Session.get("oauth_nonce").to_s
     return if expected.present? && claimed.to_s.present? && Crypto.secure_compare(expected, claimed.to_s)
 
     OauthSso.refuse("the #{provider} token does not answer this sign-in")
@@ -111,12 +111,12 @@ class OauthSso
   # Never `plain`: the challenge would be the verifier itself.
   static def begin_pkce
     verifier = Crypto.random_hex(32)
-    session_set("oauth_pkce_verifier", verifier)
+    Session.set("oauth_pkce_verifier", verifier)
     Base64.urlsafe_encode(Hex.decode(Crypto.sha256(verifier)))
   end
 
   static def pkce_verifier
-    session_get("oauth_pkce_verifier")
+    Session.get("oauth_pkce_verifier")
   end
 
   # A refusal whose message is shown to the browser as is. Only for sentences
@@ -157,8 +157,8 @@ class OauthSso
   # Record that `user` has just proved who they are in this session: a sign-in
   # through a provider, or the password typed at /oauth/reauth.
   static def mark_authenticated(user)
-    session_set("oauth_reauth_user", user._key)
-    session_set("oauth_reauth_at", DateTime.utc.to_unix)
+    Session.set("oauth_reauth_user", user._key)
+    Session.set("oauth_reauth_at", DateTime.utc.to_unix)
   end
 
   # Did `user` prove who they are in this session within `reauth_seconds`?
@@ -166,9 +166,9 @@ class OauthSso
   # not be enough to attach a provider that then signs in for good.
   static def recently_authenticated?(user)
     return false if user.nil?
-    return false unless session_get("oauth_reauth_user").to_s == user._key.to_s
+    return false unless Session.get("oauth_reauth_user").to_s == user._key.to_s
 
-    at = (session_get("oauth_reauth_at") ?? 0).to_i
+    at = (Session.get("oauth_reauth_at") ?? 0).to_i
     at > 0 && DateTime.utc.to_unix - at <= OauthSso.reauth_seconds
   end
 
@@ -196,11 +196,11 @@ class OauthSso
     refusal = OauthSso.link_refusal(user)
     OauthSso.refuse(refusal) unless refusal.nil?
 
-    session_set("oauth_link_user", user._key)
+    Session.set("oauth_link_user", user._key)
   end
 
   static def linking?
-    session_get("oauth_link_user").to_s.present?
+    Session.get("oauth_link_user").to_s.present?
   end
 
   # --- Which account ---------------------------------------------------------
@@ -220,12 +220,12 @@ class OauthSso
 
     email = OauthSso.matchable_email(email)
     identity = OauthIdentity.find_for(provider, uid)
-    linking = session_get("oauth_link_user").to_s
+    linking = Session.get("oauth_link_user").to_s
 
     if linking.present?
       # A link is added to the account this session is signed in to, never
       # to another one — checked before anything is stored.
-      OauthSso.refuse("sign in again before connecting an account") unless session_get("user_id").to_s == linking
+      OauthSso.refuse("sign in again before connecting an account") unless Session.get("user_id").to_s == linking
       if !identity.nil? && identity.user_id != linking
         OauthSso.refuse("this #{provider.capitalize} account is linked to another user")
       end
@@ -233,7 +233,7 @@ class OauthSso
       user = User.find(linking)
       # Read just now, after the round-trips to the provider: a session the
       # account ended meanwhile (a password reset) links nothing.
-      if session_get("session_version").to_i < user.current_session_version
+      if Session.get("session_version").to_i < user.current_session_version
         OauthSso.refuse("sign in again before connecting an account")
       end
       refusal = OauthSso.link_refusal(user)
@@ -368,11 +368,11 @@ class OauthSso
       # The session was already this user's, signed in before: a new id (a
       # link changes what the session can do), its stamps left as they were.
       # It must *be* this user's: a link never moves a session to an account.
-      OauthSso.refuse("sign in again before connecting an account") unless session_get("user_id") == user._key
+      OauthSso.refuse("sign in again before connecting an account") unless Session.get("user_id") == user._key
       # Its version stamp too: stamped anew, a session that a password
       # reset ended while the provider answered would be back.
-      session_regenerate()
-      session_set("user_id", user._key)
+      Session.regenerate
+      Session.set("user_id", user._key)
     else
       # A provider sign-in is a fresh proof of identity: a new session, the
       # user's alone (`auth_open_session` in app/models/user.sl), stamped
@@ -381,6 +381,6 @@ class OauthSso
     end
     OauthSso.clear_state
     OauthSso.mark_authenticated(user) unless linking
-    session_set("oauth_linked", "1") if linking
+    Session.set("oauth_linked", "1") if linking
   end
 end

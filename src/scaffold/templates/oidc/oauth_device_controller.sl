@@ -14,7 +14,7 @@ class OauthDeviceController < Controller
   def new
     user = current_user()
     if user.nil?
-      session_set("oidc_return_to", req["query_string"].to_s.blank? ? "/oauth/device" : "/oauth/device?#{req["query_string"]}")
+      Session.set("oidc_return_to", req["query_string"].to_s.blank? ? "/oauth/device" : "/oauth/device?#{req["query_string"]}")
 
       return redirect("/login")
     end
@@ -37,7 +37,7 @@ class OauthDeviceController < Controller
     return redirect("/login") if user.nil?
 
     # A grant is the account owner's to give, not an impersonating admin's.
-    if session_get("impersonator_id").to_s.present?
+    if Session.get("impersonator_id").to_s.present?
       return this._enter_step("Stop impersonating before connecting a device.")
     end
     # A user code is short: guessing or denying other people's is throttled.
@@ -54,9 +54,9 @@ class OauthDeviceController < Controller
       code,
       params["approve"].to_s == "1",
       user["_key"],
-      session_get("auth_time"),
+      Session.get("auth_time"),
       user.current_session_version,
-      session_get("sign_in_expires_at")
+      Session.get("sign_in_expires_at")
     )
     return this._enter_step("That code is invalid, expired or already used.") if row.nil?
 

@@ -3274,6 +3274,190 @@ impl TypeEnvironment {
             );
         }
         self.classes.insert("NanoID".to_string(), nanoid_class);
+
+        // `PDF` and `JWT` are the class form of the `pdf_*` and `jwt_*`
+        // functions. One `Any` parameter lifts the arity check (the native
+        // reports a wrong count). `absorb_runtime_globals` leaves a verb that
+        // is already here alone, so these stay variadic.
+        let mut static_any = |name: &str, methods: &[&str]| {
+            let mut class = ClassType::new(name.to_string());
+            for method in methods {
+                class.methods.insert(
+                    (*method).to_string(),
+                    MethodInfo {
+                        name: (*method).to_string(),
+                        params: vec![("args".to_string(), Type::Any)],
+                        return_type: Type::Any,
+                        is_private: false,
+                        is_protected: false,
+                        is_static: true,
+                    },
+                );
+            }
+            self.classes.insert(name.to_string(), class);
+        };
+        static_any(
+            "PDF",
+            &[
+                "render",
+                "preview",
+                "layout_map",
+                "from_markdown",
+                "preview_from_markdown",
+                "fill",
+                "merge",
+                "text",
+                "pages",
+                "stamp",
+                "sign",
+                "verify",
+                "extract_facturx",
+                "attachments",
+                "response",
+                "preview_response",
+                "facturx",
+                "facturx_from_invoice",
+                "invoice_data",
+            ],
+        );
+        static_any("JWT", &["sign", "verify", "decode_unsafe"]);
+        static_any(
+            "Session",
+            &[
+                "get",
+                "set",
+                "delete",
+                "has",
+                "destroy",
+                "regenerate",
+                "id",
+                "driver",
+                "configure",
+                "config",
+                "flash",
+                "flash_now",
+                "flashes",
+            ],
+        );
+        static_any("Cookie", &["set", "read", "signed", "encrypted"]);
+        static_any(
+            "Channel",
+            &[
+                "join",
+                "leave",
+                "send",
+                "close",
+                "broadcast_all",
+                "broadcast_room",
+                "broadcast",
+                "clients",
+                "clients_in",
+                "count",
+                "list_presence",
+                "presence_count",
+                "get_presence",
+                "subscribe",
+                "sse_broadcast",
+                "subscribers",
+            ],
+        );
+        static_any("Path", &["join", "dirname", "basename", "extname"]);
+        static_any("Zip", &["entries", "read", "read_text", "create"]);
+        static_any("Component", &[]);
+
+        // `Bytes`: three constructors, and the instance methods a value
+        // built by them answers. Typed, so `data: Bytes` then `data.length`
+        // reads as an Int, as it runs.
+        let bytes_type = || Type::Class(ClassType::new("Bytes".to_string()));
+        let mut bytes_class = ClassType::new("Bytes".to_string());
+        type Signature = (&'static str, bool, Vec<(String, Type)>, Type);
+        let methods: [Signature; 8] = [
+            (
+                "from_base64",
+                true,
+                vec![("encoded".to_string(), Type::String)],
+                bytes_type(),
+            ),
+            (
+                "from_string",
+                true,
+                vec![("text".to_string(), Type::String)],
+                bytes_type(),
+            ),
+            (
+                "from_array",
+                true,
+                vec![("bytes".to_string(), Type::Array(Box::new(Type::Int)))],
+                bytes_type(),
+            ),
+            ("length", false, Vec::new(), Type::Int),
+            (
+                "slice",
+                false,
+                vec![
+                    ("start".to_string(), Type::Int),
+                    ("end".to_string(), Type::Int),
+                ],
+                bytes_type(),
+            ),
+            ("to_base64", false, Vec::new(), Type::String),
+            ("to_string", false, Vec::new(), Type::String),
+            (
+                "to_array",
+                false,
+                Vec::new(),
+                Type::Array(Box::new(Type::Int)),
+            ),
+        ];
+        for (name, is_static, params, return_type) in methods {
+            bytes_class.methods.insert(
+                name.to_string(),
+                MethodInfo {
+                    name: name.to_string(),
+                    params,
+                    return_type,
+                    is_private: false,
+                    is_protected: false,
+                    is_static,
+                },
+            );
+        }
+        self.classes.insert("Bytes".to_string(), bytes_class);
+
+        let mut policy = ClassType::new("Policy".to_string());
+        policy.fields.insert(
+            "user".to_string(),
+            FieldInfo {
+                name: "user".to_string(),
+                ty: Type::Any,
+                is_private: false,
+                is_protected: false,
+                is_static: false,
+            },
+        );
+        for method in [
+            "index?",
+            "show?",
+            "create?",
+            "new?",
+            "update?",
+            "edit?",
+            "destroy?",
+            "signed_in?",
+        ] {
+            policy.methods.insert(
+                method.to_string(),
+                MethodInfo {
+                    name: method.to_string(),
+                    params: Vec::new(),
+                    return_type: Type::Any,
+                    is_private: false,
+                    is_protected: false,
+                    is_static: false,
+                },
+            );
+        }
+        self.classes.insert("Policy".to_string(), policy);
     }
 
     /// Enter a new scope.

@@ -39,7 +39,7 @@ end
 # Keep `challenge` for the next ceremony of this session. `purpose` is
 # "register" or "login", so a challenge issued for one cannot answer the other.
 def webauthn_store_challenge(purpose, challenge)
-  session_set(WEBAUTHN_CHALLENGE_KEY, {
+  Session.set(WEBAUTHN_CHALLENGE_KEY, {
     "challenge": challenge,
     "purpose": purpose,
     "expires_at": DateTime.utc.to_unix + WEBAUTHN_CHALLENGE_TTL
@@ -51,8 +51,8 @@ end
 # is checked: a challenge answers exactly one response, so a replayed response
 # or a second attempt needs fresh options.
 def webauthn_take_challenge(purpose)
-  stored = session_get(WEBAUTHN_CHALLENGE_KEY)
-  session_delete(WEBAUTHN_CHALLENGE_KEY)
+  stored = Session.get(WEBAUTHN_CHALLENGE_KEY)
+  Session.delete(WEBAUTHN_CHALLENGE_KEY)
   return nil if stored.nil?
   return nil unless stored["purpose"] == purpose
   return nil if stored["expires_at"].to_i < DateTime.utc.to_unix

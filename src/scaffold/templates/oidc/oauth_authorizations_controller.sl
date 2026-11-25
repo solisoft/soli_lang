@@ -35,7 +35,7 @@ class OauthAuthorizationsController < Controller
 
       # Come back here once they have signed in. The full query string is kept
       # so no authorization parameter is lost across the round trip.
-      session_set("oidc_return_to", "/oauth/authorize?#{req["query_string"].to_s}")
+      Session.set("oidc_return_to", "/oauth/authorize?#{req["query_string"].to_s}")
 
       return redirect("/login")
     end
@@ -91,7 +91,7 @@ class OauthAuthorizationsController < Controller
 
     client = context["client"]
     scopes = context["scopes"]
-    session_delete("oidc_consent")
+    Session.delete("oidc_consent")
 
     if params["approve"].to_s != "1"
       return oidc_authorize_error(
@@ -117,7 +117,7 @@ class OauthAuthorizationsController < Controller
   # would outlive the impersonation, at a third party, with nothing marking
   # them as the admin's doing.
   def _impersonating?
-    session_get("impersonator_id").to_s.present?
+    Session.get("impersonator_id").to_s.present?
   end
 
   def _impersonating
@@ -203,7 +203,7 @@ class OauthAuthorizationsController < Controller
     return validated if client.request_object_key.to_s.blank?
 
     id = Crypto.random_token()
-    session_set("oidc_consent", {
+    Session.set("oidc_consent", {
       "id": id,
       "client_id": client.client_id,
       "expires_at": DateTime.utc().to_unix() + 600,
@@ -215,7 +215,7 @@ class OauthAuthorizationsController < Controller
 
   # The request the GET validated for this client and this form, or nil.
   def _pending_consent(client)
-    pending = session_get("oidc_consent")
+    pending = Session.get("oidc_consent")
     return nil unless type(pending) == "hash" && pending["client_id"] == client.client_id
     return nil unless pending["expires_at"].to_i > DateTime.utc().to_unix()
     return nil if pending["id"].to_s.blank? || params["consent"].to_s.blank?
@@ -229,8 +229,8 @@ class OauthAuthorizationsController < Controller
   # `prompt=login` and `max_age` (OIDC Core §3.1.2.1) ask for a sign-in that
   # is fresh. This provider cannot make the person sign in again on its own —
   # the session belongs to the auth scaffold — and knows when they signed in
-  # only if your sign-in action records it: `session_set("auth_time",
-  # DateTime.utc.to_unix)` next to `session_set("user_id", …)`. Without that
+  # only if your sign-in action records it: `Session.set("auth_time",
+  # DateTime.utc.to_unix)` next to `Session.set("user_id", …)`. Without that
   # record, either request is answered `login_required`, which the spec
   # allows; it is never silently ignored, since a client asking for a fresh
   # sign-in usually guards something sensitive with it.
@@ -244,7 +244,7 @@ class OauthAuthorizationsController < Controller
     max_age = context["max_age"]
     return nil if max_age.blank?
 
-    auth_time = session_get("auth_time")
+    auth_time = Session.get("auth_time")
     if auth_time.nil? || DateTime.utc().to_unix() - auth_time.to_i > max_age.to_i
       return oidc_authorize_error(redirect_uri, "login_required", "The sign-in is older than max_age", state)
     end
@@ -298,7 +298,7 @@ class OauthAuthorizationsController < Controller
       return {"response": oidc_authorize_fatal("This client has no registered request-object key.")}
     end
 
-    claims = jwt_verify(params["request"].to_s, "", {
+    claims = JWT.verify(params["request"].to_s, "", {
       "algorithm": "RS256",
       "key": key,
       "issuer": client.client_id,
@@ -311,7 +311,8 @@ class OauthAuthorizationsController < Controller
     # A request object is good for minutes, not for as long as its signer
     # liked: a captured one is replayable until `exp`.
     if claims["exp"].to_i - DateTime.utc().to_unix() > 600
-      return {"response": oidc_authorize_fatal("The request object expires too far in the future (10 minutes at most).")}
+      message = "The request object expires too far in the future (10 minutes at most)."
+      return {"response": oidc_authorize_fatal(message)}
     end
 
     # RFC 9101 §6.3: client_id inside the object must agree with the outside.
@@ -335,13 +336,13 @@ class OauthAuthorizationsController < Controller
       # When the person signed in, if the sign-in action recorded it (see
       # `_stale_login_error`). Never "now": that would tell a client asking
       # max_age that a day-old session is fresh.
-      "auth_time": session_get("auth_time"),
+      "auth_time": Session.get("auth_time"),
       # A password reset or an account takeover before the exchange voids
       # the code: the token endpoint compares this with the user's version.
       "session_version": user.current_session_version,
       # When this sign-in ends by itself (a SAML session): the refresh
       # tokens this code leads to end with it.
-      "session_expires_at": session_get("sign_in_expires_at")
+      "session_expires_at": Session.get("sign_in_expires_at")
     })
 
     separator = oidc_query_separator(context["redirect_uri"])

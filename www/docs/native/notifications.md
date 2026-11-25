@@ -11,7 +11,7 @@ that has the app open; [Apple push](/docs/native/push-apple) and
 ## One line in your layout
 
 ```erb
-<% user_id = session_get("user_id") %>
+<% user_id = Session.get("user_id") %>
 <%- native_channel("user:#{str(user_id)}") rescue "" unless user_id.nil? %>
 ```
 
@@ -151,7 +151,7 @@ the shell owns the OS-level permission and a second in-page prompt would be mean
 
 Channels are yours to choose: `user:42`, `room:7`, `deploy:prod`. They may not contain `.`, `|` or
 control characters, and are namespaced internally so they can never collide with — or be reached
-through — an app's own `sse_broadcast` topics.
+through — an app's own `Channel.sse_broadcast` topics.
 
 The channel travels as a **signed token**, not as plain text. Subscribing is a `GET` the browser
 makes, so an unsigned `?channel=user:42` would let anyone listen to anyone. The token is keyed by

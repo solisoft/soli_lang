@@ -1,0 +1,91 @@
+<div>
+    <div class="mb-12">
+        <nav class="flex items-center gap-2 text-sm mb-4">
+            <a href="/docs/builtins" class="text-gray-400 hover:text-white transition-colors">Built-ins</a>
+            <svg class="w-4 h-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+            <span class="text-white">Bytes, Path and Zip</span>
+        </nav>
+        <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
+            <span class="bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent">Bytes, Path and Zip</span>
+        </h1>
+        <p class="text-xl text-gray-300 leading-8">
+            Three classes for values the rest of the framework already moves around as strings. None of them touch the disk.
+        </p>
+    </div>
+
+    <section id="bytes" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Bytes</h2>
+        <p class="text-gray-400 mb-4">
+            <code class="text-amber-400">Bytes</code> is one binary value. PDF, images, uploads and HTTP bodies stay base64 strings; this class does not change those return types.
+            <code class="text-amber-400">to_string</code> refuses bytes that are not UTF-8.
+            <code class="text-amber-400">slice(start, end?)</code> is exclusive at <code class="text-amber-400">end</code>, like a Soli range, and <code class="text-amber-400">end</code> defaults to the length.
+        </p>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+            <pre data-filename="Example"><code class="language-soli text-sm">hello = Bytes.from_string("hello")
+hello.length                  # 5
+hello.to_base64               # "aGVsbG8="
+hello.slice(1, 4).to_string   # "ell"
+
+raw = Bytes.from_array([104, 105])
+raw.to_string                 # "hi"
+
+again = Bytes.from_base64("aGVsbG8=")
+again.to_string               # "hello"</code></pre>
+        </div>
+        <p class="text-gray-400 mt-4 text-sm">
+            <code class="text-amber-400">from_base64</code> takes standard base64. <code class="text-amber-400">from_array</code> takes integers in <code class="text-amber-400">0..255</code>. A range past the value, an end before the start, or a negative index is an error. <code class="text-amber-400">slice(5, 5)</code> on a 5-byte value is empty.
+        </p>
+    </section>
+
+    <section id="path" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Path</h2>
+        <p class="text-gray-400 mb-4">
+            <code class="text-amber-400">Path</code> joins and splits a slash-separated string. It does not read or write files, and it does not normalize <code class="text-amber-400">.</code> or <code class="text-amber-400">..</code>. Separators are <code class="text-amber-400">/</code> on every platform. A later absolute part does not reset the prefix. A leading slash stays only when the first part starts with <code class="text-amber-400">/</code>. Empty segments from doubled slashes are dropped.
+        </p>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+            <pre data-filename="Example"><code class="language-soli text-sm">Path.join("app", "models", "post.sl")   # "app/models/post.sl"
+Path.join("/var/", "/app")              # "/var/app"
+Path.join("a//b")                       # "a/b"
+
+Path.dirname("app/models/post.sl")      # "app/models"
+Path.dirname("post.sl")                 # "."
+Path.dirname("/a")                      # "/"
+Path.dirname("a//b")                    # "a"
+Path.basename("/")                      # "/"
+Path.extname("archive.tar.gz")          # ".gz"
+Path.extname(".gitignore")              # ""</code></pre>
+        </div>
+        <p class="text-gray-400 mt-4 text-sm">
+            <code class="text-amber-400">dirname</code>, <code class="text-amber-400">basename</code> and <code class="text-amber-400">extname</code> trim trailing slashes first. <code class="text-amber-400">extname</code> includes the dot and uses the last one. A name whose only dot is leading has no extension, and neither has <code class="text-amber-400">.</code> or <code class="text-amber-400">..</code>. Slashes doubled before the last name go with the separator: <code class="text-amber-400">Path.dirname("a//b")</code> is <code>"a"</code>, as <code class="text-amber-400">Path.join</code> reads it.
+        </p>
+    </section>
+
+    <section id="zip" class="scroll-mt-20 mb-12">
+        <h2 class="text-2xl font-bold text-white mb-4">Zip</h2>
+        <p class="text-gray-400 mb-4">
+            <code class="text-amber-400">Zip</code> lists, reads and writes a zip archive in memory. Inputs and outputs are base64, the same shape as <code class="text-amber-400">PDF</code>.
+            <code class="text-amber-400">Zip.create</code> takes a hash of entry name to contents: a string is UTF-8, <code class="text-amber-400">{"base64": "..."}</code> is raw bytes, and an array of integers <code class="text-amber-400">0..255</code> is raw bytes too.
+            <code class="text-amber-400">Zip.entries</code> returns <code class="text-amber-400">{name, size, compressed_size, directory}</code>.
+            <code class="text-amber-400">Zip.read</code> returns the entry as base64. <code class="text-amber-400">Zip.read_text</code> returns UTF-8, or an error.
+        </p>
+        <div class="rounded-xl bg-white/5 border border-white/10 p-5">
+            <pre data-filename="Example"><code class="language-soli text-sm">archive = Zip.create({
+  "hello.txt": "hi",
+  "bin.dat": {"base64": "YWJj"}
+})
+Zip.read_text(archive, "hello.txt")   # "hi"
+Zip.read(archive, "bin.dat")           # "YWJj"
+Zip.entries(archive).length            # 2
+
+Zip.read(upload, "scan.tiff", {"max_size": 200 * 1024 * 1024})   # a larger entry</code></pre>
+        </div>
+        <p class="text-gray-400 mt-4 text-sm">
+            <code class="text-amber-400">Zip.read</code> and <code class="text-amber-400">Zip.read_text</code> inflate at most <code class="text-amber-400">max_size</code> bytes of one entry, 32 MiB unless the call passes <code>{"max_size": n}</code>. A few kilobytes of upload can declare, or inflate to, gigabytes, so an entry past the cap is an error, not a partial read. They take any name <code class="text-amber-400">Zip.entries</code> lists, as written in the archive (<code>./readme.txt</code>, <code>docs\guide.txt</code>). A name the archive does not hold is <code>has no entry</code>; an entry that cannot be opened (encrypted, an unsupported compression) says why.
+        </p>
+        <p class="text-gray-400 mt-4 text-sm">
+            Names given to <code class="text-amber-400">Zip.create</code> must be relative. An empty name, a leading slash, a backslash, or an empty, <code class="text-amber-400">.</code> or <code class="text-amber-400">..</code> segment is refused. The archive is not written to disk. A size that does not fit an integer is an error. <code class="text-amber-400">Zip</code> is part of the <code class="text-amber-400">office</code> feature, which is on by default.
+        </p>
+    </section>
+</div>

@@ -174,6 +174,7 @@ pub(crate) fn run_migration_source(
     let mut interpreter = interpreter::Interpreter::new_for_migrations();
     interpreter::builtins::mailer::ensure_prelude(&mut interpreter);
     crate::interpreter::events::ensure_prelude(&mut interpreter);
+    interpreter::builtins::policy::ensure_prelude(&mut interpreter);
     // Models load before the migration body, and without type-checking: a model
     // class is application code the migration merely borrows, and `soli check`
     // is where it gets checked.
@@ -345,6 +346,7 @@ fn script_interpreter() -> interpreter::Interpreter {
     let mut interpreter = interpreter::Interpreter::new();
     interpreter::builtins::mailer::ensure_prelude(&mut interpreter);
     crate::interpreter::events::ensure_prelude(&mut interpreter);
+    interpreter::builtins::policy::ensure_prelude(&mut interpreter);
     interpreter
 }
 
@@ -1136,6 +1138,7 @@ fn run_with_path_and_coverage_inner(
     }
     interpreter::builtins::mailer::ensure_prelude(&mut interpreter);
     crate::interpreter::events::ensure_prelude(&mut interpreter);
+    interpreter::builtins::policy::ensure_prelude(&mut interpreter);
     // `app/subscribers/` is part of the preamble, and the registry is per
     // thread: without this, every spec file a worker ran subscribed the
     // handlers again, holding closures of interpreters long gone.

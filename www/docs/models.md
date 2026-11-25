@@ -1728,11 +1728,11 @@ def attach_document
   contact = Contact.find(params.id)
   file = find_uploaded_file(req, "document")
   if file.nil?
-    flash("error", "Pick a file before submitting.")
+    Session.flash("error", "Pick a file before submitting.")
   elsif contact.attach_document(file)
-    flash("success", "Document filed.")
+    Session.flash("success", "Document filed.")
   else
-    flash("error", (contact._errors[0] ?? { "message": "Upload failed." })["message"])
+    Session.flash("error", (contact._errors[0] ?? { "message": "Upload failed." })["message"])
   end
   redirect("/contacts/#{contact._key}")
 end
@@ -1741,9 +1741,9 @@ end
 def detach_document
   contact = Contact.find(params.id)
   if contact.detach_document(params.blob_id)
-    flash("success", "Document removed.")
+    Session.flash("success", "Document removed.")
   else
-    flash("error", "Document not found on this record.")
+    Session.flash("error", "Document not found on this record.")
   end
   redirect("/contacts/#{contact._key}")
 end
@@ -3633,7 +3633,7 @@ that was never stored — a cache purge, a notification, a webhook:
 Order.transaction do
   order.pay
   order.save
-  after_commit { broadcast("orders", {"paid": order.number}) }
+  after_commit { Channel.broadcast("orders", {"paid": order.number}) }
 end
 ```
 

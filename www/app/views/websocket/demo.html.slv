@@ -89,8 +89,8 @@
                     Handle Events with Server-Side Helpers
                 </h3>
                 <p class="text-sm text-gray-400 mb-4">
-                    Instead of returning <code class="text-orange-300">{"broadcast": ...}</code>, call the
-                    <code class="text-orange-300">ws_*</code> helpers imperatively. Mix sends, broadcasts, and
+                    Instead of returning <code class="text-orange-300">{"broadcast": ...}</code>, call
+                    <code class="text-orange-300">Channel</code> imperatively. Mix sends, broadcasts, and
                     other logic in one handler.
                 </p>
                 <div class="rounded-xl bg-[#0C0A09] ring-1 ring-white/10 overflow-hidden shadow-xl">
@@ -103,15 +103,15 @@
 
   <span class="text-orange-400">if</span> event[<span class="text-green-400">"type"</span>] == <span class="text-green-400">"connect"</span>
     <span class="text-gray-500"># Greet just the new connection</span>
-    <span class="text-yellow-300">ws_send</span>(conn_id, { <span class="text-green-400">"type"</span>: <span class="text-green-400">"welcome"</span>, <span class="text-green-400">"id"</span>: conn_id })
+    <span class="text-yellow-300">Channel.send</span>(conn_id, { <span class="text-green-400">"type"</span>: <span class="text-green-400">"welcome"</span>, <span class="text-green-400">"id"</span>: conn_id })
     <span class="text-gray-500"># Tell everyone else (hash is auto-JSON-serialized)</span>
-    <span class="text-yellow-300">ws_broadcast</span>({ <span class="text-green-400">"type"</span>: <span class="text-green-400">"join"</span>, <span class="text-green-400">"user"</span>: conn_id })
+    <span class="text-yellow-300">Channel.broadcast_all</span>({ <span class="text-green-400">"type"</span>: <span class="text-green-400">"join"</span>, <span class="text-green-400">"user"</span>: conn_id })
     <span class="text-orange-400">return</span> {}
   <span class="text-orange-400">end</span>
 
   <span class="text-orange-400">if</span> event[<span class="text-green-400">"type"</span>] == <span class="text-green-400">"message"</span>
     data = event[<span class="text-green-400">"message"</span>].<span class="text-orange-300">to_h</span>
-    <span class="text-yellow-300">ws_broadcast</span>({
+    <span class="text-yellow-300">Channel.broadcast_all</span>({
       <span class="text-green-400">"type"</span>: <span class="text-green-400">"message"</span>,
       <span class="text-green-400">"text"</span>: data[<span class="text-green-400">"text"</span>],
       <span class="text-green-400">"from"</span>: conn_id
@@ -128,12 +128,13 @@
             <div class="rounded-xl bg-amber-500/10 ring-1 ring-amber-500/20 p-5">
                 <h4 class="text-sm font-semibold text-amber-300 mb-2">Helpers used on this page</h4>
                 <ul class="text-sm text-amber-100/80 space-y-1.5">
-                    <li><code class="text-yellow-300">ws_send(conn_id, msg)</code> — reply to a single connection</li>
-                    <li><code class="text-yellow-300">ws_broadcast(msg)</code> — fan out to every connected client</li>
+                    <li><code class="text-yellow-300">Channel.send(conn_id, msg)</code> — reply to a single connection</li>
+                    <li><code class="text-yellow-300">Channel.broadcast_all(msg)</code> — fan out to every connected client</li>
                 </ul>
                 <p class="text-xs text-amber-200/60 mt-3">
-                    Other helpers available: <code>ws_broadcast_room</code>, <code>ws_close</code>,
-                    <code>ws_list_presence</code>, <code>ws_presence_count</code>, <code>ws_get_presence</code>.
+                    Also on <code>Channel</code>: <code>broadcast_room</code>, <code>close</code>,
+                    <code>list_presence</code>, <code>presence_count</code>, <code>get_presence</code>.
+                    The old <code>ws_*</code> names still run and warn once.
                 </p>
             </div>
 

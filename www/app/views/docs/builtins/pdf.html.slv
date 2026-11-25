@@ -10,12 +10,13 @@
             <span class="bg-gradient-to-r from-teal-300 to-emerald-400 bg-clip-text text-transparent">PDF &amp; Factur-X Generation</span>
         </h1>
         <p class="text-xl text-gray-300 leading-8">
-            Render a PDF from a <strong>JSON layout template</strong> + a <strong>JSON data</strong> document, entirely in-process &mdash; no headless browser, no wkhtmltopdf, no Node. Three builtins:
-            <code class="text-teal-300">pdf_render</code> for an ordinary PDF, <code class="text-teal-300">pdf_facturx</code> for a
-            <strong>PDF/A&#8209;3b Factur&#8209;X (EN&nbsp;16931)</strong> electronic invoice with a Cross-Industry-Invoice XML you supply, and <code class="text-teal-300">pdf_facturx_from_invoice</code> which <em>generates</em> that XML (and the totals) from a typed invoice. The Factur-X output validates clean against veraPDF (146/146 rules).
+            Render a PDF from a <strong>JSON layout template</strong> + a <strong>JSON data</strong> document, entirely in-process &mdash; no headless browser, no wkhtmltopdf, no Node. The <code class="text-teal-300">PDF</code> class:
+            <code class="text-teal-300">PDF.render</code> for an ordinary PDF, <code class="text-teal-300">PDF.facturx</code> for a
+            <strong>PDF/A&#8209;3b Factur&#8209;X (EN&nbsp;16931)</strong> electronic invoice with a Cross-Industry-Invoice XML you supply, and <code class="text-teal-300">PDF.facturx_from_invoice</code> which <em>generates</em> that XML (and the totals) from a typed invoice. The Factur-X output validates clean against veraPDF (146/146 rules).
+            <code class="text-teal-300">pdf_render</code> and the other <code class="text-teal-300">pdf_*</code> names still run, and each warns once per process that it is deprecated.
         </p>
         <p class="text-lg text-gray-400 leading-8 mt-4">
-            And to <em>show</em> a document rather than download it, <code class="text-teal-300">pdf_preview</code> rasterises the same template to <strong>one PNG per page</strong> &mdash; thumbnails and preview panes without poppler or a PDF.js bundle.
+            And to <em>show</em> a document rather than download it, <code class="text-teal-300">PDF.preview</code> rasterises the same template to <strong>one PNG per page</strong> &mdash; thumbnails and preview panes without poppler or a PDF.js bundle.
         </p>
         <div class="mt-6">
             <a href="/docs/builtins/pdf-playground" style="background-color:#0F766E;color:#ffffff" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg font-semibold hover:opacity-90 transition-opacity">
@@ -28,22 +29,22 @@
     <!-- Quickstart -->
     <section id="section-quickstart" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">Quickstart</h2>
-        <p class="text-gray-400 mb-4">Both builtins take the template and data as JSON <em>strings</em> and return the PDF as a <strong>base64 string</strong> (Soli has no bytes type). Save it with <code>file_write_base64</code>, or return it from a controller.</p>
+        <p class="text-gray-400 mb-4"><code class="text-teal-300">PDF.render</code> and <code class="text-teal-300">PDF.facturx</code> take the template and data as JSON <em>strings</em> and return the PDF as a <strong>base64 string</strong>. <a href="/docs/builtins/bytes" class="text-amber-400 hover:underline"><code class="text-teal-300">Bytes</code></a> is a separate value and does not change what PDF returns. Save it with <code>file_write_base64</code>, or return it from a controller.</p>
         <pre data-filename="A plain PDF"><code class="language-soli text-sm">let template = slurp("pdf/invoice.json")
 let data     = JSON.stringify({ "invoice": { "number": "AN-2025-0042" }, "items": [ ... ] })
 
-let pdf = pdf_render(template, data)          # base64 string
+let pdf = PDF.render(template, data)          # base64 string. pdf_render() still works, and warns once.
 file_write_base64("out/invoice.pdf", pdf)</code></pre>
         <pre data-filename="A Factur-X (PDF/A-3b) invoice"><code class="language-soli text-sm">let xml = slurp("pdf/factur-x.xml")           # your EN 16931 CII XML
 
-let pdf = pdf_facturx(template, data, xml, {
+let pdf = PDF.facturx(template, data, xml, {
   "profile": "en16931",
   "title":   "Invoice AN-2025-0042"
 })
 file_write_base64("out/invoice.pdf", pdf)     # opens normally AND validates as Factur-X</code></pre>
         <pre data-filename="Factur-X from a typed invoice (XML + totals generated)" class="mt-3"><code class="language-soli text-sm">let invoice = slurp("pdf/invoice.json")       # typed invoice, see below
 
-let pdf = pdf_facturx_from_invoice(template, invoice, { "profile": "en16931" })
+let pdf = PDF.facturx_from_invoice(template, invoice, { "profile": "en16931" })
 file_write_base64("out/invoice.pdf", pdf)     # totals, VAT breakdown and CII XML are computed</code></pre>
     </section>
 
@@ -129,7 +130,7 @@ file_write_base64("out/invoice.pdf", pdf)     # totals, VAT breakdown and CII XM
                 <pre class="!mt-0" data-filename="invoice.sl"><code class="language-soli text-sm">def create
   let tpl  = slurp("pdf/invoice.json")
   let data = Invoice.find(params["id"]).to_json()
-  let pdf  = pdf_render(tpl, data)
+  let pdf  = PDF.render(tpl, data)
   file_write_base64(
     "storage/inv-" + params["id"] + ".pdf",
     pdf
@@ -151,7 +152,7 @@ end</code></pre>
 
         <section id="def-pdf-render" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <code class="text-lg font-mono text-amber-400">pdf_render(template, data, options?)</code>
+                <code class="text-lg font-mono text-amber-400">PDF.render(template, data, options?)</code>
                 <p class="text-gray-400 mt-3 mb-3">Render a PDF from a JSON layout <code>template</code> and a JSON <code>data</code> document. Returns the PDF as a base64 string.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
                 <div class="text-sm text-gray-400 space-y-1">
@@ -166,16 +167,16 @@ end</code></pre>
 
         <section id="def-pdf-response" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <code class="text-lg font-mono text-amber-400">pdf_response(template, data, options?)</code>
+                <code class="text-lg font-mono text-amber-400">PDF.response(template, data, options?)</code>
                 <p class="text-gray-400 mt-3 mb-3">Render <strong>and</strong> wrap as a ready HTTP response &mdash; return it straight from a controller action, no <code>file_write_base64</code> + redirect dance. The binary body travels via the <code>body_base64</code> response key, decoded by the server (usable by any handler, not just PDFs).</p>
                 <pre data-filename="controllers/invoices_controller.sl"><code class="language-soli text-sm">def download
   let tpl  = slurp("pdf/invoice.json")
   let data = Invoice.find(params["id"]).to_json()
-  return pdf_response(tpl, data, { "filename": "invoice-" + params["id"] + ".pdf" })
+  return PDF.response(tpl, data, { "filename": "invoice-" + params["id"] + ".pdf" })
 end</code></pre>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
                 <div class="text-sm text-gray-400 space-y-1">
-                    <div>As <code>pdf_render</code>, plus <code class="text-amber-400">filename</code> : <code class="text-orange-400">String?</code> &mdash; adds <code>Content-Disposition: attachment</code>; omit to render inline in the browser.</div>
+                    <div>As <code>PDF.render</code>, plus <code class="text-amber-400">filename</code> : <code class="text-orange-400">String?</code> &mdash; adds <code>Content-Disposition: attachment</code>; omit to render inline in the browser.</div>
                 </div>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400"><code class="text-orange-400">Hash</code> &mdash; <code>{ "status": 200, "headers": { "Content-Type": "application/pdf", … }, "body_base64": … }</code>.</div>
@@ -184,24 +185,24 @@ end</code></pre>
 
         <section id="def-pdf-preview" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <code class="text-lg font-mono text-amber-400">pdf_preview(template, data, options?)</code>
+                <code class="text-lg font-mono text-amber-400">PDF.preview(template, data, options?)</code>
                 <p class="text-gray-400 mt-3 mb-3">Rasterise the same document to <strong>PNG page images</strong> &mdash; a thumbnail grid, a preview pane, a generated image asset. In-process like everything else here: no headless browser, no poppler.</p>
                 <pre data-filename="controllers/invoices_controller.sl"><code class="language-soli text-sm"># One base64 PNG per page.
-let pages = pdf_preview(template, data, { "dpi": 150 })
+let pages = PDF.preview(template, data, { "dpi": 150 })
 file_write_base64("out/page-1.png", pages[0])
 
 # Or a thumbnail width — `width` wins over `dpi`.
 # WebP is ~3x smaller than PNG for a page of type: 7.7 KB vs 25 KB here.
-let thumbs = pdf_preview(template, data,
+let thumbs = PDF.preview(template, data,
   { "width": 320, "format": "webp", "quality": 90 })
 
 # Or write them straight to disk, and get the paths back.
-let paths = pdf_preview(template, data,
+let paths = PDF.preview(template, data,
   { "width": 320, "out_dir": "public/previews", "prefix": "invoice-42" })
 # => ["public/previews/invoice-42-1.png", "public/previews/invoice-42-2.png"]</code></pre>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
                 <div class="text-sm text-gray-400 space-y-1">
-                    <div>As <code>pdf_render</code>, plus the <a href="#section-preview" class="text-teal-300 hover:underline">preview options</a>: <code class="text-amber-400">dpi</code>, <code class="text-amber-400">width</code>, <code class="text-amber-400">height</code>, <code class="text-amber-400">pages</code>, <code class="text-amber-400">out_dir</code>, <code class="text-amber-400">prefix</code>.</div>
+                    <div>As <code>PDF.render</code>, plus the <a href="#section-preview" class="text-teal-300 hover:underline">preview options</a>: <code class="text-amber-400">dpi</code>, <code class="text-amber-400">width</code>, <code class="text-amber-400">height</code>, <code class="text-amber-400">pages</code>, <code class="text-amber-400">out_dir</code>, <code class="text-amber-400">prefix</code>.</div>
                 </div>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400"><code class="text-orange-400">Array&lt;String&gt;</code> &mdash; one base64 PNG per rendered page, in page order. With <code>out_dir</code>, the written paths instead.</div>
@@ -211,26 +212,26 @@ let paths = pdf_preview(template, data,
 
         <section id="def-pdf-preview-markdown" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <code class="text-lg font-mono text-amber-400">pdf_preview_from_markdown(markdown, options?)</code>
-                <p class="text-gray-400 mt-3 mb-3">The Markdown counterpart of <code>pdf_preview</code>, mirroring <code>pdf_from_markdown</code>.</p>
-                <pre data-filename="scripts/preview.sl"><code class="language-soli text-sm">let pages = pdf_preview_from_markdown(slurp("README.md"), { "width": 600 })</code></pre>
+                <code class="text-lg font-mono text-amber-400">PDF.preview_from_markdown(markdown, options?)</code>
+                <p class="text-gray-400 mt-3 mb-3">The Markdown counterpart of <code>PDF.preview</code>, mirroring <code>PDF.from_markdown</code>.</p>
+                <pre data-filename="scripts/preview.sl"><code class="language-soli text-sm">let pages = PDF.preview_from_markdown(slurp("README.md"), { "width": 600 })</code></pre>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
-                <div class="text-sm text-gray-400"><code class="text-orange-400">Array&lt;String&gt;</code> &mdash; as <code>pdf_preview</code>.</div>
+                <div class="text-sm text-gray-400"><code class="text-orange-400">Array&lt;String&gt;</code> &mdash; as <code>PDF.preview</code>.</div>
             </div>
         </section>
 
         <section id="def-pdf-preview-response" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <code class="text-lg font-mono text-amber-400">pdf_preview_response(template, data, options?)</code>
-                <p class="text-gray-400 mt-3 mb-3">One page as a ready <code>image/png</code> response &mdash; the preview mirror of <code>pdf_response</code>.</p>
+                <code class="text-lg font-mono text-amber-400">PDF.preview_response(template, data, options?)</code>
+                <p class="text-gray-400 mt-3 mb-3">One page as a ready <code>image/png</code> response &mdash; the preview mirror of <code>PDF.response</code>.</p>
                 <pre data-filename="controllers/invoices_controller.sl"><code class="language-soli text-sm">def thumbnail
   let tpl  = slurp("pdf/invoice.json")
   let data = Invoice.find(params["id"]).to_json()
-  return pdf_preview_response(tpl, data, { "page": 1, "width": 480 })
+  return PDF.preview_response(tpl, data, { "page": 1, "width": 480 })
 end</code></pre>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
                 <div class="text-sm text-gray-400 space-y-1">
-                    <div>As <code>pdf_preview</code>, plus <code class="text-amber-400">page</code> : <code class="text-orange-400">Int</code> (default <code>1</code>) and <code class="text-amber-400">filename</code>. <code>pages</code> and <code>out_dir</code> are rejected &mdash; a response carries one image.</div>
+                    <div>As <code>PDF.preview</code>, plus <code class="text-amber-400">page</code> : <code class="text-orange-400">Int</code> (default <code>1</code>) and <code class="text-amber-400">filename</code>. <code>pages</code> and <code>out_dir</code> are rejected &mdash; a response carries one image.</div>
                 </div>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400"><code class="text-orange-400">Hash</code> &mdash; <code>{ "status": 200, "headers": { "Content-Type": "image/png" }, "body_base64": … }</code>.</div>
@@ -239,7 +240,7 @@ end</code></pre>
 
         <section id="def-pdf-facturx" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <code class="text-lg font-mono text-amber-400">pdf_facturx(template, data, xml, options?)</code>
+                <code class="text-lg font-mono text-amber-400">PDF.facturx(template, data, xml, options?)</code>
                 <p class="text-gray-400 mt-3 mb-3">Render the visual PDF, then embed the caller-provided Cross-Industry-Invoice <code>xml</code> and apply everything PDF/A&#8209;3b + Factur-X require: the embedded <code>factur-x.xml</code> file, the <code>/AF</code> + name-tree wiring, an sRGB OutputIntent, and the strict XMP packet (PDF/A id + Factur-X extension schema). Returns base64 PDF/A&#8209;3b bytes.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
                 <div class="text-sm text-gray-400 space-y-1">
@@ -254,7 +255,7 @@ end</code></pre>
 
         <section id="def-pdf-facturx-from-invoice" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <code class="text-lg font-mono text-amber-400">pdf_facturx_from_invoice(template, invoice, options?)</code>
+                <code class="text-lg font-mono text-amber-400">PDF.facturx_from_invoice(template, invoice, options?)</code>
                 <p class="text-gray-400 mt-3 mb-3">Render the visual PDF <strong>and</strong> generate the EN 16931 CII XML from a single typed <a href="#section-typed-invoice" class="text-teal-300 hover:underline">invoice document</a>, then embed it. Line totals, the VAT breakdown and the grand/amount-due totals are <em>computed</em> from the line items &mdash; so the human-readable PDF and the machine-readable XML can never disagree. Returns base64 PDF/A&#8209;3b bytes.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
                 <div class="text-sm text-gray-400 space-y-1">
@@ -269,14 +270,14 @@ end</code></pre>
 
         <section id="def-pdf-invoice-data" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <code class="text-lg font-mono text-amber-400">pdf_invoice_data(invoice)</code>
-                <p class="text-gray-400 mt-3 mb-3">The data <code>pdf_facturx_from_invoice</code> hands its template, as a Hash &mdash; <code>invoice.*</code>, <code>company.*</code>, <code>customer.*</code>, <code>items[]</code>, <code>discounts[]</code>, <code>charges[]</code>, <code>total.*</code>, <code>infos.text</code>, <code>payment.*</code> &mdash; with the totals and VAT computed by the same code, to the cent. Show the totals in a page without computing them twice, or draw a preview that prints exactly what the Factur-X PDF will.</p>
-                <pre class="text-sm bg-black/30 rounded-lg p-3 overflow-x-auto"><code class="language-soli">data = pdf_invoice_data(invoice_json)
+                <code class="text-lg font-mono text-amber-400">PDF.invoice_data(invoice)</code>
+                <p class="text-gray-400 mt-3 mb-3">The data <code>PDF.facturx_from_invoice</code> hands its template, as a Hash &mdash; <code>invoice.*</code>, <code>company.*</code>, <code>customer.*</code>, <code>items[]</code>, <code>discounts[]</code>, <code>charges[]</code>, <code>total.*</code>, <code>infos.text</code>, <code>payment.*</code> &mdash; with the totals and VAT computed by the same code, to the cent. Show the totals in a page without computing them twice, or draw a preview that prints exactly what the Factur-X PDF will.</p>
+                <pre class="text-sm bg-black/30 rounded-lg p-3 overflow-x-auto"><code class="language-soli">data = PDF.invoice_data(invoice_json)
 print(data["total"]["due_amount"])                 # "€3126.28"
-pages = pdf_preview(template, {"data": data}.to_json, {"width": 760})</code></pre>
+pages = PDF.preview(template, {"data": data}.to_json, {"width": 760})</code></pre>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
                 <div class="text-sm text-gray-400 space-y-1">
-                    <div><code class="text-amber-400">invoice</code> : <code class="text-orange-400">String</code> &mdash; the typed invoice JSON. An invalid one raises <code>pdf_invoice_data() invalid invoice: &hellip;</code>.</div>
+                    <div><code class="text-amber-400">invoice</code> : <code class="text-orange-400">String</code> &mdash; the typed invoice JSON. An invalid one raises <code>PDF.invoice_data() invalid invoice: &hellip;</code>.</div>
                 </div>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400"><code class="text-orange-400">Hash</code> &mdash; the render data. Amounts are formatted strings with the currency symbol; <code>payment.amount</code> is bare (<code>3126.28</code>).</div>
@@ -285,8 +286,8 @@ pages = pdf_preview(template, {"data": data}.to_json, {"width": 760})</code></pr
 
         <section id="def-pdf-from-markdown" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <code class="text-lg font-mono text-amber-400">pdf_from_markdown(markdown, options?)</code>
-                <p class="text-gray-400 mt-3 mb-3">Render a designed PDF straight from a <strong>Markdown</strong> string &mdash; <em>write prose, get a PDF</em>. Headings, paragraphs, <strong>bold</strong>/<em>italic</em>/<code>code</code>/links/strike, ordered &amp; unordered (nested) lists, tables, fenced code blocks, blockquotes, rules and images map onto the layout engine's elements. No template to author. Composes with everything else &mdash; <code>pdf_from_markdown(md, { sign: {…} })</code> gives a <strong>signed</strong> document from Markdown.</p>
+                <code class="text-lg font-mono text-amber-400">PDF.from_markdown(markdown, options?)</code>
+                <p class="text-gray-400 mt-3 mb-3">Render a designed PDF straight from a <strong>Markdown</strong> string &mdash; <em>write prose, get a PDF</em>. Headings, paragraphs, <strong>bold</strong>/<em>italic</em>/<code>code</code>/links/strike, ordered &amp; unordered (nested) lists, tables, fenced code blocks, blockquotes, rules and images map onto the layout engine's elements. No template to author. Composes with everything else &mdash; <code>PDF.from_markdown(md, { sign: {…} })</code> gives a <strong>signed</strong> document from Markdown.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
                 <div class="text-sm text-gray-400 space-y-1">
                     <div><code class="text-amber-400">markdown</code> : <code class="text-orange-400">String</code> &mdash; the Markdown source (CommonMark + tables, strikethrough, task lists).</div>
@@ -299,7 +300,7 @@ pages = pdf_preview(template, {"data": data}.to_json, {"width": 760})</code></pr
 
         <section id="def-pdf-fill" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <code class="text-lg font-mono text-amber-400">pdf_fill(pdf, data, options?)</code>
+                <code class="text-lg font-mono text-amber-400">PDF.fill(pdf, data, options?)</code>
                 <p class="text-gray-400 mt-3 mb-3"><strong>Fill an existing PDF's form fields</strong> (AcroForm) from data &mdash; the "take a government/enterprise form and fill it programmatically" workflow the render builtins can't do (they <em>write</em> PDFs; this <em>reads</em> one). Sets text fields, checkboxes/radios and choice fields; <code>flatten</code> bakes the values into static, read-only appearances.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
                 <div class="text-sm text-gray-400 space-y-1">
@@ -314,28 +315,28 @@ pages = pdf_preview(template, {"data": data}.to_json, {"width": 760})</code></pr
 
         <section id="def-pdf-manipulate" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <code class="text-lg font-mono text-amber-400">pdf_merge(pdfs) &middot; pdf_pages(pdf, selection) &middot; pdf_stamp(pdf, text, options?)</code>
+                <code class="text-lg font-mono text-amber-400">PDF.merge(pdfs) &middot; PDF.pages(pdf, selection) &middot; PDF.stamp(pdf, text, options?)</code>
                 <p class="text-gray-400 mt-3 mb-3">Operate on <strong>existing</strong> PDFs &mdash; the toolkit half of the engine. Each takes a <strong>path or base64</strong> and returns base64.</p>
                 <div class="text-sm text-gray-400 space-y-2">
-                    <div><code class="text-amber-400">pdf_merge(pdfs)</code> &mdash; concatenate an array of PDF sources (paths or base64) into one, in order. Inherited page attributes are inlined so pages keep their look.</div>
-                    <div><code class="text-amber-400">pdf_pages(pdf, selection)</code> &mdash; keep a subset: a range string <code>"1-3,7,9-11"</code> or an array <code>[1,3,7]</code> (1-based), in original order.</div>
-                    <div><code class="text-amber-400">pdf_stamp(pdf, text, options?)</code> &mdash; draw <code>text</code> onto pages. Options: <code>pages</code> (default all), <code>x</code>/<code>y</code> (default centered), <code>size</code> (48), <code>color</code> (hex), <code>rotation</code> (45), <code>opacity</code> (0.25). For <code>DRAFT</code>/<code>PAID</code>/<code>CONFIDENTIAL</code> watermarks.</div>
+                    <div><code class="text-amber-400">PDF.merge(pdfs)</code> &mdash; concatenate an array of PDF sources (paths or base64) into one, in order. Inherited page attributes are inlined so pages keep their look.</div>
+                    <div><code class="text-amber-400">PDF.pages(pdf, selection)</code> &mdash; keep a subset: a range string <code>"1-3,7,9-11"</code> or an array <code>[1,3,7]</code> (1-based), in original order.</div>
+                    <div><code class="text-amber-400">PDF.stamp(pdf, text, options?)</code> &mdash; draw <code>text</code> onto pages. Options: <code>pages</code> (default all), <code>x</code>/<code>y</code> (default centered), <code>size</code> (48), <code>color</code> (hex), <code>rotation</code> (45), <code>opacity</code> (0.25). For <code>DRAFT</code>/<code>PAID</code>/<code>CONFIDENTIAL</code> watermarks.</div>
                 </div>
-                <pre class="mt-3" data-filename="Manipulate existing PDFs"><code class="language-soli text-sm">let doc     = pdf_merge([ "cover.pdf", report, "terms.pdf" ])
-let excerpt = pdf_pages(doc, "1-3")
-let draft   = pdf_stamp(doc, "DRAFT", { opacity: 0.2, color: "cc2222", rotation: 45 })</code></pre>
+                <pre class="mt-3" data-filename="Manipulate existing PDFs"><code class="language-soli text-sm">let doc     = PDF.merge([ "cover.pdf", report, "terms.pdf" ])
+let excerpt = PDF.pages(doc, "1-3")
+let draft   = PDF.stamp(doc, "DRAFT", { opacity: 0.2, color: "cc2222", rotation: 45 })</code></pre>
             </div>
         </section>
 
         <section id="def-pdf-read-einvoice" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <code class="text-lg font-mono text-amber-400">pdf_extract_facturx(pdf) &middot; pdf_attachments(pdf)</code>
-                <p class="text-gray-400 mt-3 mb-3">Read a <strong>received</strong> e-invoice &mdash; the inverse of <code>pdf_facturx*</code>. You can now <em>process</em> incoming Factur-X / ZUGFeRD / XRechnung invoices, not just emit them.</p>
+                <code class="text-lg font-mono text-amber-400">PDF.extract_facturx(pdf) &middot; PDF.attachments(pdf)</code>
+                <p class="text-gray-400 mt-3 mb-3">Read a <strong>received</strong> e-invoice &mdash; the inverse of <code>PDF.facturx*</code>. You can now <em>process</em> incoming Factur-X / ZUGFeRD / XRechnung invoices, not just emit them.</p>
                 <div class="text-sm text-gray-400 space-y-2">
-                    <div><code class="text-amber-400">pdf_extract_facturx(pdf)</code> &mdash; the embedded EN&nbsp;16931 invoice XML as a <strong>String</strong>, or <strong>null</strong> if none. Matches the standard attachment names.</div>
-                    <div><code class="text-amber-400">pdf_attachments(pdf)</code> &mdash; an array of <code>{ name, mime, size, base64 }</code>, one per embedded file (reads the <code>/EmbeddedFiles</code> tree, falling back to <code>/AF</code>).</div>
+                    <div><code class="text-amber-400">PDF.extract_facturx(pdf)</code> &mdash; the embedded EN&nbsp;16931 invoice XML as a <strong>String</strong>, or <strong>null</strong> if none. Matches the standard attachment names.</div>
+                    <div><code class="text-amber-400">PDF.attachments(pdf)</code> &mdash; an array of <code>{ name, mime, size, base64 }</code>, one per embedded file (reads the <code>/EmbeddedFiles</code> tree, falling back to <code>/AF</code>).</div>
                 </div>
-                <pre class="mt-3" data-filename="Process a received invoice"><code class="language-soli text-sm">xml = pdf_extract_facturx("inbox/supplier-invoice.pdf")
+                <pre class="mt-3" data-filename="Process a received invoice"><code class="language-soli text-sm">xml = PDF.extract_facturx("inbox/supplier-invoice.pdf")
 if xml.present?
   invoice = Xml.parse(xml)
   # the ram: prefix resolves through the declarations on the root element
@@ -348,18 +349,18 @@ end</code></pre>
 
         <section id="def-pdf-text" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <code class="text-lg font-mono text-amber-400">pdf_text(pdf, options?)</code>
+                <code class="text-lg font-mono text-amber-400">PDF.text(pdf, options?)</code>
                 <p class="text-gray-400 mt-3 mb-3">The text of a PDF &mdash; one you received or one you made &mdash; for search, indexing or an LLM prompt. <code>pdf</code> is a <strong>path or base64</strong>.</p>
                 <div class="text-sm text-gray-400 space-y-2">
                     <div>Returns a <strong>String</strong>, pages separated by a form feed (<code>"\u000c"</code>, as <code>pdftotext</code> does), or an <strong>Array</strong> of page strings with <code>per_page: true</code>. <code>pages</code> takes a range string (<code>"2-3"</code>) or an array, in the order given; a page the document does not have raises.</div>
                     <div>Lines come back in reading order, rebuilt from where each string lands: words keep their spaces, a table row stays on one line, a wider vertical gap becomes an empty line. Text inside form XObjects (letterheads, stamped overlays) is read too; ligatures are spelt out.</div>
                     <div><strong class="text-white">Limits.</strong> A scanned page has no text and comes back empty (no OCR). Two text columns side by side are read line by line across both. A font with neither a usable encoding nor a <code>/ToUnicode</code> map decodes through the standard encoding. A PDF that needs a password raises; an empty user password reads normally. Not on the Cloudflare Workers build.</div>
                 </div>
-                <pre class="mt-3" data-filename="Index a document page by page"><code class="language-soli text-sm">text  = pdf_text("inbox/contract.pdf")
+                <pre class="mt-3" data-filename="Index a document page by page"><code class="language-soli text-sm">text  = PDF.text("inbox/contract.pdf")
 
 # An uploaded file carries its bytes as base64 in "data".
 file  = find_uploaded_file(req, "document")
-pages = pdf_text(file["data"], {"per_page": true})
+pages = PDF.text(file["data"], {"per_page": true})
 
 pages.each_with_index do |page, i|
   Chunk.create({"document": doc._key, "page": i + 1, "text": page})
@@ -369,14 +370,14 @@ end</code></pre>
 
         <section id="def-pdf-sign-verify" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
-                <code class="text-lg font-mono text-amber-400">pdf_sign(pdf, options) &middot; pdf_verify(pdf)</code>
+                <code class="text-lg font-mono text-amber-400">PDF.sign(pdf, options) &middot; PDF.verify(pdf)</code>
                 <p class="text-gray-400 mt-3 mb-3">Sign an <strong>existing</strong> PDF, and verify signatures on one you received. Both take a <strong>path or base64</strong>.</p>
                 <div class="text-sm text-gray-400 space-y-2">
-                    <div><code class="text-amber-400">pdf_sign(pdf, options)</code> &mdash; the standalone sibling of the <a href="#section-signatures" class="text-teal-300 hover:underline">sign</a> render option; <code>options</code> is the sign config directly (<code>cert</code>, <code>key</code>, <code>chain?</code>, <code>reason?</code>, <code>tsa?</code>, <code>appearance?</code>, <code>field?</code>, <code>incremental?</code>, <code>stamps?</code>). Composes with the toolkit: <code>merge → sign</code>, <code>fill → sign</code>. Signing a PDF that is <strong>already signed</strong> adds a signature and keeps the earlier ones valid &mdash; see <a href="#section-several-signatures" class="text-teal-300 hover:underline">Several signatures</a>.</div>
-                    <div><code class="text-amber-400">pdf_verify(pdf)</code> &mdash; an array of <code>{ field, valid, covers_document, signer, reason?, signed_at? }</code>. <code>valid</code> = the CMS verifies against its embedded cert AND the ByteRange digest matches (authentic + unmodified); it does not assert certificate <em>trust</em>.</div>
+                    <div><code class="text-amber-400">PDF.sign(pdf, options)</code> &mdash; the standalone sibling of the <a href="#section-signatures" class="text-teal-300 hover:underline">sign</a> render option; <code>options</code> is the sign config directly (<code>cert</code>, <code>key</code>, <code>chain?</code>, <code>reason?</code>, <code>tsa?</code>, <code>appearance?</code>, <code>field?</code>, <code>incremental?</code>, <code>stamps?</code>). Composes with the toolkit: <code>merge → sign</code>, <code>fill → sign</code>. Signing a PDF that is <strong>already signed</strong> adds a signature and keeps the earlier ones valid &mdash; see <a href="#section-several-signatures" class="text-teal-300 hover:underline">Several signatures</a>.</div>
+                    <div><code class="text-amber-400">PDF.verify(pdf)</code> &mdash; an array of <code>{ field, valid, covers_document, signer, reason?, signed_at? }</code>. <code>valid</code> = the CMS verifies against its embedded cert AND the ByteRange digest matches (authentic + unmodified); it does not assert certificate <em>trust</em>.</div>
                 </div>
-                <pre class="mt-3" data-filename="Sign & verify existing PDFs"><code class="language-soli text-sm">let signed = pdf_sign("contract.pdf", { cert: signer_pem, key: signer_key, reason: "Approved" })
-for sig in pdf_verify(received_pdf)
+                <pre class="mt-3" data-filename="Sign & verify existing PDFs"><code class="language-soli text-sm">let signed = PDF.sign("contract.pdf", { cert: signer_pem, key: signer_key, reason: "Approved" })
+for sig in PDF.verify(received_pdf)
   print("#{sig["field"]}: valid=#{sig["valid"]} by #{sig["signer"]}")
 end</code></pre>
             </div>
@@ -393,18 +394,18 @@ end</code></pre>
                         <tr><td class="px-4 py-2"><code>font_dirs</code></td><td class="px-4 py-2">Array&lt;String&gt;</td><td class="px-4 py-2"><code>["font"]</code></td><td class="px-4 py-2">Directories to load fonts from. No fonts are bundled.</td></tr>
                         <tr><td class="px-4 py-2"><code>fetch_images</code></td><td class="px-4 py-2">Bool</td><td class="px-4 py-2"><code>true</code></td><td class="px-4 py-2">Fetch <code>http(s)</code> images. Set <code>false</code> for offline/deterministic output. Fetches go through the same SSRF guard as <code>HTTP.*</code> (private/loopback/reserved refused, DNS-rebinding safe, every redirect hop re-validated); a body over 20&nbsp;MiB is rejected.</td></tr>
                         <tr><td class="px-4 py-2"><code>profile</code></td><td class="px-4 py-2">String</td><td class="px-4 py-2"><code>en16931</code></td><td class="px-4 py-2"><span class="text-gray-500">(Factur-X)</span> Factur-X profile &mdash; see the profile table.</td></tr>
-                        <tr><td class="px-4 py-2"><code>title</code> / <code>author</code> / <code>subject</code></td><td class="px-4 py-2">String</td><td class="px-4 py-2">&mdash;</td><td class="px-4 py-2">Document metadata (Info dict; XMP too on Factur-X). Works for <code>pdf_render</code> as well &mdash; the plain-render title defaults to <code>"invoice"</code> when unset.</td></tr>
+                        <tr><td class="px-4 py-2"><code>title</code> / <code>author</code> / <code>subject</code></td><td class="px-4 py-2">String</td><td class="px-4 py-2">&mdash;</td><td class="px-4 py-2">Document metadata (Info dict; XMP too on Factur-X). Works for <code>PDF.render</code> as well &mdash; the plain-render title defaults to <code>"invoice"</code> when unset.</td></tr>
                         <tr><td class="px-4 py-2"><code>stationery</code></td><td class="px-4 py-2">String</td><td class="px-4 py-2">&mdash;</td><td class="px-4 py-2">Path (app-root relative) to a <strong>letterhead PDF</strong> drawn beneath every page's content. Page 1 uses the letterhead's first page; later pages use its second page when present, else the first. Missing file = error; scaled to the page size; a template <code>background</code> fill paints over it.</td></tr>
                         <tr><td class="px-4 py-2"><code>attachments</code></td><td class="px-4 py-2">Array</td><td class="px-4 py-2">&mdash;</td><td class="px-4 py-2">Files embedded into the reader's attachments panel: <code>[{ "path", "name"?, "mime"? }]</code> (app-root relative; missing file = error; MIME guessed from the extension). Composes with Factur-X &mdash; <code>factur-x.xml</code> and your attachments coexist.</td></tr>
-                        <tr><td class="px-4 py-2"><code>password</code> / <code>owner_password</code></td><td class="px-4 py-2">String</td><td class="px-4 py-2">&mdash;</td><td class="px-4 py-2">Password-protect the PDF (<strong>AES-128</strong>). <code>password</code> opens the document; <code>owner_password</code> lifts restrictions (defaults to <code>password</code>). Incompatible with <code>pdf_facturx*</code> (PDF/A forbids encryption).</td></tr>
+                        <tr><td class="px-4 py-2"><code>password</code> / <code>owner_password</code></td><td class="px-4 py-2">String</td><td class="px-4 py-2">&mdash;</td><td class="px-4 py-2">Password-protect the PDF (<strong>AES-128</strong>). <code>password</code> opens the document; <code>owner_password</code> lifts restrictions (defaults to <code>password</code>). Incompatible with <code>PDF.facturx*</code> (PDF/A forbids encryption).</td></tr>
                         <tr><td class="px-4 py-2"><code>permissions</code></td><td class="px-4 py-2">Array</td><td class="px-4 py-2">all</td><td class="px-4 py-2">With a password, the actions the user may take: any of <code>["print","copy","modify","annotate"]</code>. Empty = allow all (open-password only).</td></tr>
-                        <tr><td class="px-4 py-2"><code>pdfa</code></td><td class="px-4 py-2">Bool</td><td class="px-4 py-2"><code>false</code></td><td class="px-4 py-2"><span class="text-gray-500">(pdf_render / pdf_response)</span> Emit <strong>PDF/A-3b</strong> (archival conformance: sRGB OutputIntent, XMP <code>pdfaid</code>, PDF 1.7) without a Factur-X payload &mdash; for legal-archiving mandates on non-invoice documents. Incompatible with <code>password</code>; <code>pdf_facturx*</code> reject it (already PDF/A). <strong>Composes with a <code>tagged</code> template</strong> &mdash; the output then declares PDF/A-3b <em>and</em> PDF/UA-1 (accessible + archival). Attachments compose.</td></tr>
+                        <tr><td class="px-4 py-2"><code>pdfa</code></td><td class="px-4 py-2">Bool</td><td class="px-4 py-2"><code>false</code></td><td class="px-4 py-2"><span class="text-gray-500">(PDF.render / PDF.response)</span> Emit <strong>PDF/A-3b</strong> (archival conformance: sRGB OutputIntent, XMP <code>pdfaid</code>, PDF 1.7) without a Factur-X payload &mdash; for legal-archiving mandates on non-invoice documents. Incompatible with <code>password</code>; <code>PDF.facturx*</code> reject it (already PDF/A). <strong>Composes with a <code>tagged</code> template</strong> &mdash; the output then declares PDF/A-3b <em>and</em> PDF/UA-1 (accessible + archival). Attachments compose.</td></tr>
                         <tr><td class="px-4 py-2"><code>sign</code></td><td class="px-4 py-2">Hash</td><td class="px-4 py-2">&mdash;</td><td class="px-4 py-2"><strong>Digitally sign</strong> the PDF (PAdES) &mdash; see <a href="#section-signatures" class="text-teal-300 hover:underline">Digital signatures</a>. <code>{ "cert", "key", "chain"?, "reason"?, "location"?, "name"?, "contact"? }</code>. Works on every builtin, including signed Factur-X e&#8209;invoices. Incompatible with <code>password</code> (a signed PDF must not be encrypted).</td></tr>
                     </tbody>
                 </table>
             </div>
 
-            <h3 class="text-lg font-semibold text-white mt-8 mb-3">Preview options <span class="text-xs font-normal text-teal-300 align-middle">&middot; <code>pdf_preview*</code> only</span></h3>
+            <h3 class="text-lg font-semibold text-white mt-8 mb-3">Preview options <span class="text-xs font-normal text-teal-300 align-middle">&middot; <code>PDF.preview*</code> only</span></h3>
             <div class="overflow-x-auto rounded-xl border border-white/10">
                 <table class="w-full text-sm text-left">
                     <thead class="bg-white/5 text-gray-300">
@@ -413,23 +414,23 @@ end</code></pre>
                     <tbody class="text-gray-400 divide-y divide-white/5">
                         <tr><td class="px-4 py-2"><code>dpi</code></td><td class="px-4 py-2">Number</td><td class="px-4 py-2"><code>96</code></td><td class="px-4 py-2">Rasterisation density; scale is <code>dpi / 72</code>. A4 comes out 794&times;1123 at 96, 1240&times;1754 at 150. Capped at 600.</td></tr>
                         <tr><td class="px-4 py-2"><code>width</code> / <code>height</code></td><td class="px-4 py-2">Int (px)</td><td class="px-4 py-2">&mdash;</td><td class="px-4 py-2">Exact output size. <strong>Either one overrides <code>dpi</code></strong>; given both, the page is scaled to <em>fit inside</em> the box with its aspect ratio preserved. Capped at 8192 per axis.</td></tr>
-                        <tr><td class="px-4 py-2"><code>pages</code></td><td class="px-4 py-2">Array&nbsp;|&nbsp;String</td><td class="px-4 py-2">all</td><td class="px-4 py-2">Which pages to rasterise, 1&#8209;based &mdash; <code>[1, 3]</code> or <code>"1-3,7"</code>, the same selection <code>pdf_pages</code> takes. A page past the end is an error, not a short array.</td></tr>
+                        <tr><td class="px-4 py-2"><code>pages</code></td><td class="px-4 py-2">Array&nbsp;|&nbsp;String</td><td class="px-4 py-2">all</td><td class="px-4 py-2">Which pages to rasterise, 1&#8209;based &mdash; <code>[1, 3]</code> or <code>"1-3,7"</code>, the same selection <code>PDF.pages</code> takes. A page past the end is an error, not a short array.</td></tr>
                         <tr><td class="px-4 py-2"><code>out_dir</code></td><td class="px-4 py-2">String</td><td class="px-4 py-2">&mdash;</td><td class="px-4 py-2">Write PNG files here (app-root relative, jailed) and return their paths instead of base64.</td></tr>
                         <tr><td class="px-4 py-2"><code>prefix</code></td><td class="px-4 py-2">String</td><td class="px-4 py-2"><code>"page"</code></td><td class="px-4 py-2">Base file name under <code>out_dir</code>. One page gives <code>&lt;prefix&gt;.png</code>; several give <code>&lt;prefix&gt;-1.png</code>, <code>&lt;prefix&gt;-2.png</code>, &hellip; Must be a plain file name &mdash; no path separators.</td></tr>
-                        <tr><td class="px-4 py-2"><code>page</code></td><td class="px-4 py-2">Int</td><td class="px-4 py-2"><code>1</code></td><td class="px-4 py-2"><span class="text-gray-500">(pdf_preview_response)</span> Which page the response carries.</td></tr>
+                        <tr><td class="px-4 py-2"><code>page</code></td><td class="px-4 py-2">Int</td><td class="px-4 py-2"><code>1</code></td><td class="px-4 py-2"><span class="text-gray-500">(PDF.preview_response)</span> Which page the response carries.</td></tr>
                         <tr><td class="px-4 py-2"><code>format</code></td><td class="px-4 py-2">String</td><td class="px-4 py-2"><code>"png"</code></td><td class="px-4 py-2"><code>"png"</code>, <code>"webp"</code> or <code>"jpeg"</code>. <strong>Reach for <code>webp</code></strong> &mdash; see below. The written file extension and the response <code>Content-Type</code> follow it.</td></tr>
                         <tr><td class="px-4 py-2"><code>quality</code></td><td class="px-4 py-2">Int</td><td class="px-4 py-2"><code>90</code></td><td class="px-4 py-2">1&ndash;100, for <code>webp</code> and <code>jpeg</code>. Ignored by <code>png</code>, which is lossless.</td></tr>
                     </tbody>
                 </table>
             </div>
-            <p class="text-gray-400 mt-3 text-sm"><code>font_dirs</code> and <code>fetch_images</code> work as they do for <code>pdf_render</code>. <code>stationery</code>, <code>attachments</code>, <code>password</code>, <code>pdfa</code> and <code>sign</code> are <strong>accepted but ignored</strong>, so one options hash can drive both the PDF and its preview. The two that change what you would see &mdash; <code>stationery</code> and <code>sign</code> &mdash; warn once per process; the rest cannot alter a pixel, so they pass quietly.</p>
+            <p class="text-gray-400 mt-3 text-sm"><code>font_dirs</code> and <code>fetch_images</code> work as they do for <code>PDF.render</code>. <code>stationery</code>, <code>attachments</code>, <code>password</code>, <code>pdfa</code> and <code>sign</code> are <strong>accepted but ignored</strong>, so one options hash can drive both the PDF and its preview. The two that change what you would see &mdash; <code>stationery</code> and <code>sign</code> &mdash; warn once per process; the rest cannot alter a pixel, so they pass quietly.</p>
         </section>
     </section>
 
     <!-- Page previews -->
     <section id="section-preview" class="scroll-mt-20 mb-12">
-        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">Page previews <span class="text-xs font-normal text-teal-300 align-middle">&middot; <code>pdf_preview</code> &middot; PNG</span></h2>
-        <p class="text-gray-400 mb-4"><code class="text-amber-400">pdf_preview</code> gives the layout engine a second backend: instead of emitting PDF operators it paints the same laid-out page into pixels. Three consequences are worth knowing.</p>
+        <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">Page previews <span class="text-xs font-normal text-teal-300 align-middle">&middot; <code>PDF.preview</code> &middot; PNG</span></h2>
+        <p class="text-gray-400 mb-4"><code class="text-amber-400">PDF.preview</code> gives the layout engine a second backend: instead of emitting PDF operators it paints the same laid-out page into pixels. Three consequences are worth knowing.</p>
         <div class="grid gap-3 md:grid-cols-3 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-4">
                 <h4 class="text-sm font-semibold text-white mb-1">It is the same layout</h4>
@@ -437,7 +438,7 @@ end</code></pre>
             </div>
             <div class="rounded-xl bg-white/5 border border-white/10 p-4">
                 <h4 class="text-sm font-semibold text-white mb-1">It covers what the engine renders</h4>
-                <p class="text-sm text-gray-400"><code>pdf_merge</code>, <code>pdf_pages</code>, <code>pdf_fill</code>, <code>pdf_stamp</code> and an uploaded PDF produce <em>bytes</em>; rasterising those would need a PDF interpreter. Preview the template, before those steps.</p>
+                <p class="text-sm text-gray-400"><code>PDF.merge</code>, <code>PDF.pages</code>, <code>PDF.fill</code>, <code>PDF.stamp</code> and an uploaded PDF produce <em>bytes</em>; rasterising those would need a PDF interpreter. Preview the template, before those steps.</p>
             </div>
             <div class="rounded-xl bg-white/5 border border-white/10 p-4">
                 <h4 class="text-sm font-semibold text-white mb-1">A few things cannot appear</h4>
@@ -480,7 +481,7 @@ end</code></pre>
     <section id="section-signatures" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4 flex items-center gap-3">Digital signatures <span class="text-xs font-normal text-teal-300 align-middle">&middot; <code>sign</code> &middot; PAdES</span></h2>
         <p class="text-gray-400 mb-4">Pass a <code class="text-amber-400">sign</code> option to <strong>cryptographically sign</strong> the PDF with a detached CMS signature (PAdES baseline, <code>ETSI.CAdES.detached</code>). A reader &mdash; Acrobat, Okular, <code>pdfsig</code> &mdash; can then confirm <em>who</em> issued the document and that it <strong>hasn't been modified since</strong>. Signing is in&#8209;process (no external service) and layers on top of everything else, including Factur-X: emit an invoice that is <strong>archival (PDF/A&#8209;3b), machine&#8209;readable (EN&nbsp;16931) and signed</strong> in one call.</p>
-        <pre data-filename="Sign a PDF"><code class="language-soli text-sm">let pdf = pdf_render(template, data, {
+        <pre data-filename="Sign a PDF"><code class="language-soli text-sm">let pdf = PDF.render(template, data, {
   sign: {
     cert: slurp("config/certs/signer.pem"),   # signer certificate (PEM or path)
     key:  slurp("config/certs/signer.key"),   # private key (PEM or path)
@@ -491,7 +492,7 @@ end</code></pre>
 })
 
 # The flagship: archival + machine-readable + signed, in one call.
-let pdf = pdf_facturx_from_invoice(template, invoice, {
+let pdf = PDF.facturx_from_invoice(template, invoice, {
   sign: { cert: signer_pem, key: signer_key }
 })</code></pre>
         <div class="overflow-x-auto mt-4">
@@ -514,18 +515,18 @@ let pdf = pdf_facturx_from_invoice(template, invoice, {
         <p class="text-sm text-gray-400 mt-3"><strong>Trusted timestamp (PAdES-B-T).</strong> Add a <code class="text-amber-400">tsa</code> URL to have the signature timestamped by a Time-Stamp Authority: the signature value is hashed, sent to the TSA, and the returned RFC 3161 token is embedded as an unsigned attribute &mdash; independent proof the signature existed at a given time, resilient to the signer's certificate later expiring. <code>tsa: "http://timestamp.digicert.com"</code>. The URL is SSRF-checked (a private or loopback TSA is refused, redirects re-validated) and the reply is capped at 1&nbsp;MiB.</p>
         <h3 id="section-several-signatures" class="text-lg font-semibold text-white mt-8 mb-2">Several signatures</h3>
         <p class="text-sm text-gray-400">Sign a signed PDF again and the new signature is added as an <strong>incremental update</strong>: the bytes already signed are kept exactly as they were, and only the new signature, its field and the changed form and page objects are appended after them. Each earlier signature still covers what it signed, so a contract can collect signatures in turn &mdash; and every one of them verifies.</p>
-        <pre class="mt-3" data-filename="Two signers"><code class="language-soli text-sm">contract = pdf_from_markdown(terms)
-contract = pdf_sign(contract, { cert: alice_pem, key: alice_key, name: "Alice",
+        <pre class="mt-3" data-filename="Two signers"><code class="language-soli text-sm">contract = PDF.from_markdown(terms)
+contract = PDF.sign(contract, { cert: alice_pem, key: alice_key, name: "Alice",
                                 appearance: { x: 40, y: 40, width: 180, height: 60,
                                               image: params["signature"] } })   # canvas data URL
-contract = pdf_sign(contract, { cert: bob_pem, key: bob_key, name: "Bob",
+contract = PDF.sign(contract, { cert: bob_pem, key: bob_key, name: "Bob",
                                 appearance: { x: 320, y: 40, width: 180, height: 60 } })
 
-pdf_verify(contract)
+PDF.verify(contract)
 # [{ field: "Signature1", valid: true, covers_document: false, … },
 #  { field: "Signature2", valid: true, covers_document: true,  … }]</code></pre>
         <p class="text-sm text-gray-400 mt-3">Only the <strong>last</strong> signature has <code>covers_document: true</code>; an earlier one covers its own revision &mdash; the file as it was when it was signed. Readers (Acrobat, <code>pdfsig</code>) show each signature as valid and the earlier ones as &ldquo;not total document signed&rdquo;, the expected state for a document signed by several parties. Place empty signature fields first and sign into them by name with <code>field:</code>, so the signer never chooses where the block goes.</p>
-        <p class="text-sm text-gray-400 mt-3"><code>pdf_stamp</code>, <code>pdf_merge</code>, <code>pdf_fill</code> and the other editing builtins rewrite the whole file, so running one <strong>after</strong> a signature invalidates it: stamp, merge and fill first, sign last.</p>
+        <p class="text-sm text-gray-400 mt-3"><code>PDF.stamp</code>, <code>PDF.merge</code>, <code>PDF.fill</code> and the other editing builtins rewrite the whole file, so running one <strong>after</strong> a signature invalidates it: stamp, merge and fill first, sign last.</p>
         <p class="text-sm text-gray-400 mt-3"><strong>Key handling.</strong> Read the certificate and key from files or env &mdash; never from request data &mdash; and keep the private key out of source control. Soli reads the material you pass and never logs it.</p>
         <ul class="text-sm text-gray-400 mt-3 list-disc list-inside space-y-1">
             <li><strong>Incompatible with <code>password</code></strong> &mdash; a signed PDF must not be AES-encrypted; choose one.</li>
@@ -538,11 +539,11 @@ pdf_verify(contract)
     <section id="section-serving" class="scroll-mt-20 mb-12">
         <h2 class="text-2xl font-bold text-white mb-4">Saving &amp; serving</h2>
         <p class="text-gray-400 mb-4"><code class="text-amber-400">file_write_base64(path, b64)</code> decodes the base64 string and writes the bytes &mdash; the natural partner to either builtin.</p>
-        <pre data-filename="Save to disk"><code class="language-soli text-sm">let pdf = pdf_render(tpl, data)
+        <pre data-filename="Save to disk"><code class="language-soli text-sm">let pdf = PDF.render(tpl, data)
 file_write_base64("storage/invoice.pdf", pdf)</code></pre>
         <p class="text-gray-400 mt-4 mb-2">To stream it as a download, return base64 with a PDF content type and let your front-end / proxy decode, or persist then redirect to the file:</p>
         <pre data-filename="controllers/invoices_controller.sl"><code class="language-soli text-sm">def download
-  let pdf = pdf_render(slurp("pdf/invoice.json"), Invoice.find(params["id"]).to_json())
+  let pdf = PDF.render(slurp("pdf/invoice.json"), Invoice.find(params["id"]).to_json())
   let path = "storage/inv-" + params["id"] + ".pdf"
   file_write_base64(path, pdf)
   redirect("/" + path)
@@ -566,7 +567,7 @@ end</code></pre>
 
   # Render the Factur-X for this record and file it as the `pdf` attachment.
   def store_pdf(template, invoice_json)
-    let pdf = pdf_facturx_from_invoice(template, invoice_json, { "profile": "en16931" })
+    let pdf = PDF.facturx_from_invoice(template, invoice_json, { "profile": "en16931" })
     this.attach_pdf({
       "data":         pdf,                          # pass base64 as-is — stored as raw bytes (decoded automatically)
       "filename":     "invoice-#{this.number}.pdf",
@@ -642,8 +643,8 @@ let stored = solidb_get_blob(client, "invoice_pdfs", invoice.pdf_blob_id)</code>
         <p class="text-sm text-gray-400 mt-3">Set <code class="text-amber-400">options.tagged</code>: <code>true</code> (with an optional <code class="text-amber-400">options.lang</code>) to emit a <strong>tagged PDF</strong>. The renderer wraps each piece of content in marked content with a <strong>semantic role</strong> and adds the structure assistive tech relies on &mdash; a <code>StructTreeRoot</code>, <code>MarkInfo</code>, a <code>ParentTree</code>, per-page <code>StructParents</code>, logical tab order (<code>/Tabs /S</code>), the document <code>/Lang</code>, and an XMP <code>pdfuaid</code> identifier.</p>
         <pre data-filename="Tagged output"><code class="language-json text-sm">"options": { "tagged": true, "lang": "fr-FR" }</code></pre>
         <p class="text-sm text-gray-400 mt-3">Roles come from the template: a bookmarked paragraph (<code>bookmark</code>/<code>bookmarkLevel</code>) becomes <code>H1</code>&hellip;<code>H6</code> (level = <code>bookmarkLevel</code>); any other paragraph is <code>P</code>; an <code>image</code>/<code>qr</code>/<code>barcode</code> is a <code>Figure</code> carrying <code>/Alt</code> from its <code>alt</code>; rules, watermarks, background art and the running header/footer are <code>Artifact</code>s that screen readers skip. Give every meaningful image an <code>alt</code> &mdash; a tagged render <strong>warns</strong> for each one missing it.</p>
-        <p class="text-sm text-gray-400 mt-3">Headings, paragraphs, figures, <strong>lists</strong> (<code>L › LI › LBody</code>) and <strong>tables</strong> (<code>Table › TR › TD/TH</code>, with a <code>/Scope</code> on header cells) are all mapped to real structure. A tagged document rendered with <code>pdfa</code> (or via <code>pdf_facturx*</code>) validates as <strong>both PDF/A-3b and PDF/UA-1</strong> &mdash; checked in CI with the <a href="https://verapdf.org" class="text-teal-300 hover:underline">veraPDF</a> reference validator.</p>
-        <p class="text-sm text-gray-400 mt-3"><strong>Tagging composes with PDF/A and Factur-X.</strong> Set <code class="text-amber-400">options.tagged</code> together with the <code>pdfa</code> option (or use <code>pdf_facturx*</code>) and the output carries <strong>both</strong> the PDF/A-3b (<code>pdfaid</code>) and PDF/UA-1 (<code>pdfuaid</code>) identifiers over a single structure tree &mdash; one file that is accessible, archival and (for Factur-X) machine-readable at once.</p>
+        <p class="text-sm text-gray-400 mt-3">Headings, paragraphs, figures, <strong>lists</strong> (<code>L › LI › LBody</code>) and <strong>tables</strong> (<code>Table › TR › TD/TH</code>, with a <code>/Scope</code> on header cells) are all mapped to real structure. A tagged document rendered with <code>pdfa</code> (or via <code>PDF.facturx*</code>) validates as <strong>both PDF/A-3b and PDF/UA-1</strong> &mdash; checked in CI with the <a href="https://verapdf.org" class="text-teal-300 hover:underline">veraPDF</a> reference validator.</p>
+        <p class="text-sm text-gray-400 mt-3"><strong>Tagging composes with PDF/A and Factur-X.</strong> Set <code class="text-amber-400">options.tagged</code> together with the <code>pdfa</code> option (or use <code>PDF.facturx*</code>) and the output carries <strong>both</strong> the PDF/A-3b (<code>pdfaid</code>) and PDF/UA-1 (<code>pdfuaid</code>) identifiers over a single structure tree &mdash; one file that is accessible, archival and (for Factur-X) machine-readable at once.</p>
 
         <h3 class="text-lg font-semibold text-white mt-8 mb-3">Elements</h3>
         <p class="text-gray-400 mb-3">Each element in an array has a <code>type</code>. The cursor flows top-down; lengths are in points (A4 is 595&times;842&nbsp;pt, default margins 20&nbsp;mm).</p>
@@ -813,7 +814,7 @@ let stored = solidb_get_blob(client, "invoice_pdfs", invoice.pdf_blob_id)</code>
             <pre class="!mt-2 !mb-0"><code class="language-soli text-sm">let spans = Markdown.to_spans("Pay **now**, read the `README`, see [docs](https://x).")
 let template = { "fonts": ["titillium"],
   "content": [ { "type": "paragraph", "spans": spans } ] }
-let pdf = pdf_render(template.to_json(), "{}")</code></pre>
+let pdf = PDF.render(template.to_json(), "{}")</code></pre>
         </div>
 
         <h3 class="text-lg font-semibold text-white mt-8 mb-3">Cells: text &amp; rich</h3>
@@ -885,7 +886,7 @@ let pdf = pdf_render(template.to_json(), "{}")</code></pre>
                 </tbody>
             </table>
         </div>
-        <p class="text-sm text-gray-400 mb-3">Invalid input (non-EUR, missing IBAN, over-long fields) is <strong>skipped with a warning</strong>, never fatal. With <code>pdf_facturx_from_invoice</code>, a ready-made <code>payment</code> block is exposed in the render data &mdash; give the seller an <code>iban</code> (and optional <code>bic</code>) and bind the QR straight to it:</p>
+        <p class="text-sm text-gray-400 mb-3">Invalid input (non-EUR, missing IBAN, over-long fields) is <strong>skipped with a warning</strong>, never fatal. With <code>PDF.facturx_from_invoice</code>, a ready-made <code>payment</code> block is exposed in the render data &mdash; give the seller an <code>iban</code> (and optional <code>bic</code>) and bind the QR straight to it:</p>
         <pre data-filename="qr bound to the invoice"><code class="language-json text-sm">{ "type": "qr", "kind": "epc",
   "name": "${payment.name}", "iban": "${payment.iban}", "bic": "${payment.bic}",
   "amount": "${payment.amount}", "currency": "${payment.currency}",
@@ -917,7 +918,7 @@ verapdf -f 3b invoice.pdf            # → PASS, 146/146 rules
 java -jar Mustang-CLI.jar --action validate --source invoice.pdf</code></pre>
 
         <h3 id="section-typed-invoice" class="scroll-mt-20 text-lg font-semibold text-white mt-8 mb-3">Typed invoice document</h3>
-        <p class="text-gray-400 mb-3"><code class="text-teal-300">pdf_facturx_from_invoice</code> takes a <em>typed invoice</em> instead of separate data + XML. Totals and the VAT breakdown are computed from the lines and the document-level allowances/charges, then mapped onto the template (<code>invoice.*</code>, <code>company.*</code> = seller, <code>customer.*</code> = buyer, <code>items[]</code>, <code>discounts[]</code>, <code>charges[]</code>, <code>total.*</code>, <code>infos.text</code>) and emitted as CII XML.</p>
+        <p class="text-gray-400 mb-3"><code class="text-teal-300">PDF.facturx_from_invoice</code> takes a <em>typed invoice</em> instead of separate data + XML. Totals and the VAT breakdown are computed from the lines and the document-level allowances/charges, then mapped onto the template (<code>invoice.*</code>, <code>company.*</code> = seller, <code>customer.*</code> = buyer, <code>items[]</code>, <code>discounts[]</code>, <code>charges[]</code>, <code>total.*</code>, <code>infos.text</code>) and emitted as CII XML.</p>
         <pre data-filename="pdf/invoice.json"><code class="language-json text-sm">{
   "number": "#12345",
   "issue_date": "2025-11-28",
@@ -1014,7 +1015,7 @@ File.binwrite("invoice.pdf", pdf)</code></pre>
         </h2>
         <p class="text-gray-400 mb-4">Generation is in-process and CPU-bound &mdash; no browser to spawn. The numbers below load-test a controller action that renders a real invoice (the Quote sample) on <em>every</em> request, measured with <a href="https://github.com/hatoo/oha" class="text-teal-300 hover:underline">oha</a> on a release build (16 cores). <code>/health</code> is the bare-framework baseline, to show the overhead is the PDF, not the HTTP path.</p>
         <pre data-filename="The benchmarked endpoint"><code class="language-soli text-sm">def pdf_bench
-  let pdf = pdf_render(slurp("pdf/template.json"), slurp("pdf/data.json"),
+  let pdf = PDF.render(slurp("pdf/template.json"), slurp("pdf/data.json"),
                        { "fetch_images": false })
   return { "status": 200, "headers": {"Content-Type": "text/plain"},
            "body": "generated " + len(pdf) + " base64 bytes" }

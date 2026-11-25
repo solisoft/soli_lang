@@ -537,7 +537,7 @@ instance, `soli jobs` — call `live_update`:
 # In a job, a controller, anywhere:
 live_update("board", { "note": "deploy finished" })                       # every attached "board"
 live_update("board", { "score": 9 }, { "room": "lobby" })                 # only that room
-live_update("board", { "score": 9 }, { "session": session_id() })         # one user's views
+live_update("board", { "score": 9 }, { "session": Session.id })         # one user's views
 live_update("board", { "id": "main", "score": 9 }, { "child": "score" })  # a nested live_component
 # => { "local": 2, "published": true }
 ```

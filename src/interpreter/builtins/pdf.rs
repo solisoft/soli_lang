@@ -720,6 +720,33 @@ pub fn register_pdf_builtins(env: &mut Environment) {
             },
         )),
     );
+
+    // `PDF.render` and the rest. The `pdf_*` names stay as deprecated aliases.
+    crate::interpreter::builtins::bind_deprecated_class(
+        env,
+        "PDF",
+        &[
+            ("pdf_render", "render"),
+            ("pdf_preview", "preview"),
+            ("pdf_layout_map", "layout_map"),
+            ("pdf_from_markdown", "from_markdown"),
+            ("pdf_preview_from_markdown", "preview_from_markdown"),
+            ("pdf_fill", "fill"),
+            ("pdf_merge", "merge"),
+            ("pdf_text", "text"),
+            ("pdf_pages", "pages"),
+            ("pdf_stamp", "stamp"),
+            ("pdf_sign", "sign"),
+            ("pdf_verify", "verify"),
+            ("pdf_extract_facturx", "extract_facturx"),
+            ("pdf_attachments", "attachments"),
+            ("pdf_response", "response"),
+            ("pdf_preview_response", "preview_response"),
+            ("pdf_facturx", "facturx"),
+            ("pdf_facturx_from_invoice", "facturx_from_invoice"),
+            ("pdf_invoice_data", "invoice_data"),
+        ],
+    );
 }
 
 /// `pdf_invoice_data(invoice)`: what `pdf_facturx_from_invoice` hands its
@@ -1760,4 +1787,29 @@ fn now_odt() -> OffsetDateTime {
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0);
     OffsetDateTime::from_unix_timestamp(secs).unwrap_or(OffsetDateTime::UNIX_EPOCH)
+}
+
+#[cfg(test)]
+mod class_tests {
+    use super::*;
+
+    #[test]
+    fn pdf_class_names_itself_and_keeps_the_alias() {
+        let mut env = Environment::new();
+        register_pdf_builtins(&mut env);
+        let class = match env.get("PDF") {
+            Some(Value::Class(class)) => class,
+            other => panic!("expected the PDF class, got {other:?}"),
+        };
+        assert!(class.native_static_methods.contains_key("invoice_data"));
+        assert!(env.get("pdf_render").is_some());
+        let render = class
+            .native_static_methods
+            .get("render")
+            .expect("PDF.render")
+            .clone();
+        let err = (render.func)(&[]).expect_err("arity");
+        assert!(err.contains("PDF.render()"), "{err}");
+        assert!(!err.contains("pdf_render"), "{err}");
+    }
 }

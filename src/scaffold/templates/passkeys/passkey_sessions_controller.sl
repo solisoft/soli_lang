@@ -68,7 +68,7 @@ class PasskeySessionsController < Controller
     # A passkey that verified its user (screen lock, PIN, biometrics) already
     # is two factors: with `soli generate auth --two-factor`, this sign-in
     # skips the code challenge.
-    session_set("two_factor", "ok:#{user._key}") if result["user_verified"]
+    Session.set("two_factor", "ok:#{user._key}") if result["user_verified"]
     render_json({"redirect": "/"})
   end
 

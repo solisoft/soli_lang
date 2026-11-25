@@ -302,24 +302,30 @@ pub fn build(opts: &Options<'_>) -> Result<Summary, String> {
     })
 }
 
-/// Whether Soli source calls a `pdf_*` builtin (`pdf_render(…)`,
-/// `pdf_response(…)`), comments aside. A hint for a warning, not a parse: a
-/// string that says `pdf_render(` counts too.
+/// Whether Soli source uses the PDF builtins: the `PDF` class
+/// (`PDF.response(…)`, `PDF.render`) or a deprecated `pdf_*` function
+/// (`pdf_render(…)`), comments aside. A hint for a warning, not a parse: a
+/// string that says `pdf_render(` or `PDF.render` counts too.
 fn mentions_pdf(source: &str) -> bool {
     source.lines().any(|line| {
         let code = line.split(" #").next().unwrap_or(line);
         if code.trim_start().starts_with('#') {
             return false;
         }
-        code.match_indices("pdf_").any(|(at, prefix)| {
-            let starts_a_name = !code[..at]
-                .chars()
-                .next_back()
-                .is_some_and(|c| c.is_alphanumeric() || c == '_');
-            let rest = code[at + prefix.len()..]
-                .trim_start_matches(|c: char| c.is_alphanumeric() || c == '_');
-            starts_a_name && rest.starts_with('(')
-        })
+        let is_name_char = |c: char| c.is_alphanumeric() || c == '_';
+        let starts_a_name = |at: usize| !code[..at].chars().next_back().is_some_and(is_name_char);
+        let function = code.match_indices("pdf_").any(|(at, prefix)| {
+            let rest = code[at + prefix.len()..].trim_start_matches(is_name_char);
+            starts_a_name(at) && rest.starts_with('(')
+        });
+        let class = code.match_indices("PDF.").any(|(at, prefix)| {
+            starts_a_name(at)
+                && code[at + prefix.len()..]
+                    .chars()
+                    .next()
+                    .is_some_and(|c| c.is_ascii_lowercase())
+        });
+        function || class
     })
 }
 
@@ -1062,7 +1068,7 @@ mod tests {
         fs::write(
             app.join("app/controllers/invoices_controller.sl"),
             "class InvoicesController < Controller\n  # GET /invoices/:id\n  def show(req)\n    \
-             pdf_response(template(), data())\n  end\nend\n",
+             PDF.response(template(), data())\n  end\nend\n",
         )
         .unwrap();
         let summary = build(&options(false)).unwrap();
@@ -1079,6 +1085,12 @@ mod tests {
         assert!(!mentions_pdf("x = 1 # then pdf_render(a, b)"));
         assert!(!mentions_pdf("pdf_path = invoice_pdf_url(invoice)"));
         assert!(!mentions_pdf("my_pdf_render(a)"));
+        assert!(mentions_pdf("PDF.response(template, data)"));
+        assert!(mentions_pdf("    body = PDF.render(template, data, opts)"));
+        assert!(mentions_pdf("pages = PDF.pages"));
+        assert!(!mentions_pdf("# PDF.response(template, data) later"));
+        assert!(!mentions_pdf("x = MyPDF.render(a)"));
+        assert!(!mentions_pdf("title = \"A PDF. Then more\""));
     }
 
     /// An app on Postgres gets node-postgres: its glue, `src/sql.js` exporting

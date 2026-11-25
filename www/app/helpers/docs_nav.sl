@@ -182,6 +182,7 @@ def docs_nav_sections()
         { "path": "/docs/builtins/imap", "label": "IMAP (Email)" },
         { "path": "/docs/builtins/mailer", "label": "Mailer" },
         { "path": "/docs/builtins/file", "label": "File" },
+        { "path": "/docs/builtins/bytes", "label": "Bytes, Path and Zip" },
         { "path": "/docs/utility/base64", "label": "Base64" },
         { "path": "/docs/utility/encoding", "label": "Encoding" },
         { "path": "/docs/builtins/spreadsheet", "label": "Spreadsheet" },

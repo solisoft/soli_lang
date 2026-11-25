@@ -108,8 +108,9 @@ layer:
   `User#password_error`, which sign-up and password-reset both call — so the
   reset flow can't be used to install a weaker password than registration
   accepts.
-- `app/policies/application_policy.sl` — the `ApplicationPolicy` base class plus
+- `app/policies/application_policy.sl` — `class ApplicationPolicy < Policy`, plus
   the global `authorize` / `policy_for` / `current_user` / `signed_in?` helpers.
+  The deny-by-default predicates live on the builtin `Policy`.
 - `app/policies/user_policy.sl` — a worked example policy.
 - `app/helpers/auth_helper.sl` — `current_user` / `signed_in?` for views.
 
@@ -147,9 +148,11 @@ class PostPolicy < ApplicationPolicy
 end
 ```
 
-Policies **default to deny** — `ApplicationPolicy` returns `false` for every
-predicate, so you only override what you want to allow. `new?` falls back to
-`create?` and `edit?` falls back to `update?` unless you override them.
+Policies **default to deny**. The builtin `Policy` returns `false` for
+`index?`, `show?`, `create?`, `update?` and `destroy?`. `new?` calls
+`create?`, `edit?` calls `update?`, and `signed_in?` is a present `@user`.
+`ApplicationPolicy` extends `Policy` and keeps the constructor (`@user` and
+`@record` from the context hash). Override only the predicates you want to allow.
 
 ## Authorizing in a controller
 

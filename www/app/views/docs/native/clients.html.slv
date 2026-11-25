@@ -25,7 +25,7 @@ soli generate client android --fcm --url https://app.example.com \
 soli generate client ios --url https://app.example.com \
   --bundle-id net.example.myapp --team-id TEAMID --scheme myapp</code></pre>
     <pre class="mb-6"><code class="language-erb text-sm">&lt;%- csrf_meta_tag() %&gt;
-&lt;% user_id = session_get("user_id") %&gt;
+&lt;% user_id = Session.get("user_id") %&gt;
 &lt;%- native_channel("user:#{str(user_id)}") rescue "" unless user_id.nil? %&gt;</code></pre>
     <pre class="mb-12"><code class="language-soli text-sm">deliver_to_user(user.id, {
   "title": "New ping", "body": "Ana replied", "url": "/pings/3"

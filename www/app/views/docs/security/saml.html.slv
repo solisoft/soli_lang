@@ -181,7 +181,7 @@ soli generate saml</code></pre>
             <strong class="text-white">With two-factor.</strong> A user who turned on
             <a href="/docs/security/authentication#two-factor" class="text-amber-400 hover:text-amber-300">two-factor</a> is asked for their code after a SAML sign-in
             too. If the identity provider already enforces it, mark the session in <code>SamlController#acs</code>:
-            <code>session_set("two_factor", "ok:#{user._key}")</code>.
+            <code>Session.set("two_factor", "ok:#{user._key}")</code>.
         </p>
     </section>
 

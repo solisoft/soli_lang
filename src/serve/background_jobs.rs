@@ -245,6 +245,7 @@ fn build_job_interpreter(id: usize, interpreter: &mut Interpreter, config: &Pool
     // Mailer/Message/__MailDelivery base classes (used by `deliver_later` jobs).
     mailer::ensure_prelude(interpreter);
     crate::interpreter::events::ensure_prelude(interpreter);
+    crate::interpreter::builtins::policy::ensure_prelude(interpreter);
 
     if let Err(e) = load_models(interpreter, &config.models_dir) {
         eprintln!("Background job worker {}: error loading models: {}", id, e);

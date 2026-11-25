@@ -43,6 +43,17 @@ PNG_MAGIC = "iVBORw0KGgo"
 
 PREVIEW_DIR = "/tmp/soli-pdf-builtins-spec-previews"
 
+describe("PDF class") do
+  test("PDF.render names itself, and pdf_render keeps the old name") do
+    assert_raises("PDF.render() expects 2 or 3 arguments") do
+      PDF.render()
+    end
+    assert_raises("pdf_render() expects 2 or 3 arguments") do
+      pdf_render()
+    end
+  end
+end
+
 describe("PDF builtins") do
   describe("pdf_render") do
     test("returns base64 PDF bytes") do
@@ -57,7 +68,10 @@ describe("PDF builtins") do
 
     test("pdfa is incompatible with password protection") do
       assert_raises("`pdfa` is incompatible with password protection") do
-        pdf_render(PDF_TEMPLATE, PDF_DATA, {"pdfa": true, "password": "x"})
+        pdf_render(PDF_TEMPLATE, PDF_DATA, {
+          "pdfa": true,
+          "password": "x"
+        })
       end
     end
   end
@@ -65,12 +79,16 @@ describe("PDF builtins") do
   describe("pdf_response") do
     test("wraps the PDF as a ready attachment response") do
       response = pdf_response(PDF_TEMPLATE, PDF_DATA, {"filename": "test.pdf"})
-      assert_eq(response.keys, ["status", "headers", "body_base64"])
+      assert_eq(response.keys, [
+        "status",
+        "headers",
+        "body_base64"
+      ])
       assert_eq(response["status"], 200)
-      assert_eq(response["headers"], {
-        "Content-Type": "application/pdf",
-        "Content-Disposition": "attachment; filename=\"test.pdf\""
-      })
+      assert_eq(
+        response["headers"],
+        {"Content-Type": "application/pdf", "Content-Disposition": "attachment; filename=\"test.pdf\""}
+      )
       assert(response["body_base64"].starts_with(PDF_MAGIC))
     end
   end
@@ -142,7 +160,11 @@ describe("PDF page previews") do
     end
 
     test("PDF-only options are ignored, not fatal — one hash drives both") do
-      options = {"pdfa": true, "password": "x", "stationery": "does-not-exist.pdf"}
+      options = {
+        "pdfa": true,
+        "password": "x",
+        "stationery": "does-not-exist.pdf"
+      }
       pages = pdf_preview(PDF_TEMPLATE, PDF_DATA, options)
       assert(pages[0].starts_with(PNG_MAGIC))
     end
@@ -167,7 +189,10 @@ describe("PDF page previews") do
     end
 
     test("width wins over dpi") do
-      page = pdf_preview(PDF_TEMPLATE, PDF_DATA, {"dpi": 600, "width": 400})[0]
+      page = pdf_preview(PDF_TEMPLATE, PDF_DATA, {
+        "dpi": 600,
+        "width": 400
+      })[0]
       assert_eq(Image.from_buffer(page).width, 400)
     end
 
@@ -208,7 +233,10 @@ describe("PDF page previews") do
           { "type": "paragraph", "value": "c" }
         ]
       }"""
-      assert_eq(pdf_preview(three_pages, PDF_DATA, {"width": 120, "pages": [1]}).length, 1)
+      assert_eq(pdf_preview(three_pages, PDF_DATA, {
+        "width": 120,
+        "pages": [1]
+      }).length, 1)
     end
 
     test("asking for a page past the end is an error") do
@@ -233,39 +261,66 @@ describe("PDF page previews") do
   describe("formats") do
     test("webp is smaller than png, and both decode at the size asked for") do
       png = pdf_preview(PDF_TEMPLATE, PDF_DATA, {"width": 600})[0]
-      webp = pdf_preview(PDF_TEMPLATE, PDF_DATA, {"width": 600, "format": "webp"})[0]
+      webp = pdf_preview(PDF_TEMPLATE, PDF_DATA, {
+        "width": 600,
+        "format": "webp"
+      })[0]
       assert_lt(webp.length, png.length)
       assert_eq(Image.from_buffer(png).width, 600)
       assert_eq(Image.from_buffer(webp).width, 600)
     end
 
     test("jpeg decodes at the size asked for") do
-      jpeg = pdf_preview(PDF_TEMPLATE, PDF_DATA, {"width": 300, "format": "jpeg"})[0]
+      jpeg = pdf_preview(PDF_TEMPLATE, PDF_DATA, {
+        "width": 300,
+        "format": "jpeg"
+      })[0]
       assert_eq(Image.from_buffer(jpeg).width, 300)
     end
 
     test("quality trades size for fidelity") do
-      high = pdf_preview(PDF_TEMPLATE, PDF_DATA, {"width": 600, "format": "webp", "quality": 95})[0]
-      low = pdf_preview(PDF_TEMPLATE, PDF_DATA, {"width": 600, "format": "webp", "quality": 40})[0]
+      high = pdf_preview(PDF_TEMPLATE, PDF_DATA, {
+        "width": 600,
+        "format": "webp",
+        "quality": 95
+      })[0]
+      low = pdf_preview(PDF_TEMPLATE, PDF_DATA, {
+        "width": 600,
+        "format": "webp",
+        "quality": 40
+      })[0]
       assert_lt(low.length, high.length)
     end
   end
 
   describe("out_dir") do
     test("writes one file per page and returns their paths") do
-      paths = pdf_preview(TWO_PAGE_TEMPLATE, PDF_DATA, {"width": 200, "out_dir": PREVIEW_DIR, "prefix": "doc"})
+      paths = pdf_preview(TWO_PAGE_TEMPLATE, PDF_DATA, {
+        "width": 200,
+        "out_dir": PREVIEW_DIR,
+        "prefix": "doc"
+      })
       assert_eq(paths, ["#{PREVIEW_DIR}/doc-1.png", "#{PREVIEW_DIR}/doc-2.png"])
       assert(File.exists("#{PREVIEW_DIR}/doc-2.png"))
       assert_eq(Image.new(paths[0]).width, 200)
     end
 
     test("a single page keeps the bare prefix as its name") do
-      paths = pdf_preview(PDF_TEMPLATE, PDF_DATA, {"width": 120, "out_dir": PREVIEW_DIR, "prefix": "solo"})
+      paths = pdf_preview(PDF_TEMPLATE, PDF_DATA, {
+        "width": 120,
+        "out_dir": PREVIEW_DIR,
+        "prefix": "solo"
+      })
       assert_eq(paths, ["#{PREVIEW_DIR}/solo.png"])
     end
 
     test("the written file takes the format's extension") do
-      options = {"width": 200, "format": "webp", "out_dir": PREVIEW_DIR, "prefix": "shot"}
+      options = {
+        "width": 200,
+        "format": "webp",
+        "out_dir": PREVIEW_DIR,
+        "prefix": "shot"
+      }
       paths = pdf_preview(PDF_TEMPLATE, PDF_DATA, options)
       assert_eq(paths, ["#{PREVIEW_DIR}/shot.webp"])
       assert(file_exists("#{PREVIEW_DIR}/shot.webp"))
@@ -273,7 +328,10 @@ describe("PDF page previews") do
 
     test("a prefix cannot smuggle a path out of the directory") do
       assert_raises("`prefix` must be a plain file name without path separators, got \"../escape\"") do
-        pdf_preview(PDF_TEMPLATE, PDF_DATA, {"out_dir": PREVIEW_DIR, "prefix": "../escape"})
+        pdf_preview(PDF_TEMPLATE, PDF_DATA, {
+          "out_dir": PREVIEW_DIR,
+          "prefix": "../escape"
+        })
       end
     end
   end
@@ -294,7 +352,10 @@ describe("PDF page previews") do
     end
 
     test("carries the content type of the format") do
-      response = pdf_preview_response(PDF_TEMPLATE, PDF_DATA, {"format": "webp", "width": 320})
+      response = pdf_preview_response(PDF_TEMPLATE, PDF_DATA, {
+        "format": "webp",
+        "width": 320
+      })
       assert_eq(response["headers"]["Content-Type"], "image/webp")
     end
 

@@ -469,7 +469,7 @@ end</code></pre>
             <p class="text-gray-400 mb-3">The first four parameters are <code class="text-amber-400">HTTP.stream</code>&rsquo;s (<code class="text-amber-400">timeout</code> is the wait for the next bytes, default 120). <code class="text-amber-400">to</code> is a hash:</p>
             <ul class="list-disc list-inside text-gray-400 mb-3 space-y-1">
                 <li><code class="text-amber-400">format</code>: how the text is taken out. <code class="text-amber-400">"anthropic"</code> (Messages API events: the <code class="text-amber-400">text_delta</code>s, <code class="text-amber-400">stop_reason</code>, <code class="text-amber-400">usage</code>; an <code class="text-amber-400">error</code> event fails the stream), <code class="text-amber-400">"openai"</code> (chat completion chunks: <code class="text-amber-400">choices[0].delta.content</code> up to <code class="text-amber-400">[DONE]</code>, <code class="text-amber-400">finish_reason</code>, <code class="text-amber-400">usage</code>), <code class="text-amber-400">"sse"</code> (each event&rsquo;s data) or <code class="text-amber-400">"lines"</code> (each line; the default);</li>
-                <li><code class="text-amber-400">topic</code> (optional): an <code class="text-amber-400">sse_subscribe</code> topic. Each chunk&rsquo;s new text is broadcast as a <code class="text-amber-400">delta</code> event, <code class="text-amber-400">{"id", "text"}</code>. At the end comes one <code class="text-amber-400">done</code>, <code class="text-amber-400">failed</code> or <code class="text-amber-400">cancelled</code> event, <code class="text-amber-400">{"id", "text", "error"?}</code>;</li>
+                <li><code class="text-amber-400">topic</code> (optional): an <code class="text-amber-400">Channel.subscribe</code> topic. Each chunk&rsquo;s new text is broadcast as a <code class="text-amber-400">delta</code> event, <code class="text-amber-400">{"id", "text"}</code>. At the end comes one <code class="text-amber-400">done</code>, <code class="text-amber-400">failed</code> or <code class="text-amber-400">cancelled</code> event, <code class="text-amber-400">{"id", "text", "error"?}</code>;</li>
                 <li><code class="text-amber-400">job</code> (optional): a job class, enqueued once when the stream ends, failed or cancelled ones included;</li>
                 <li><code class="text-amber-400">args</code> (optional hash): passed to the job, merged with <code class="text-amber-400">stream_id</code>, <code class="text-amber-400">state</code> (<code class="text-amber-400">"done"</code>, <code class="text-amber-400">"failed"</code>, <code class="text-amber-400">"cancelled"</code>), <code class="text-amber-400">status</code> (the HTTP code), <code class="text-amber-400">text</code>, <code class="text-amber-400">error</code>, <code class="text-amber-400">stop_reason</code> and <code class="text-amber-400">usage</code>.</li>
             </ul>
@@ -488,7 +488,7 @@ end</code></pre>
 
   # GET /chats/:id/stream — the page's EventSource
   def stream(req)
-    sse_subscribe(req, "chat:#{params["id"]}")
+    Channel.subscribe(req, "chat:#{params["id"]}")
   end
 end</code></pre>
             <pre data-filename="app/jobs/answer_done_job.sl"><code class="language-soli text-sm">class AnswerDoneJob

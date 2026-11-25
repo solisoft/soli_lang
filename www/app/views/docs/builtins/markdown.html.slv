@@ -117,7 +117,7 @@ println(html)  # &lt;h1&gt;Hello World&lt;/h1&gt;</code></pre>
 # => [ {"text":"Pay "}, {"text":"now","fontWeight":"bold"}, … ]
 let template = { "fonts": ["titillium"],
   "content": [ { "type": "paragraph", "spans": spans } ] }
-let pdf = pdf_render(template.to_json(), "{}")</code></pre>
+let pdf = PDF.render(template.to_json(), "{}")</code></pre>
             </div>
         </section>
     </section>

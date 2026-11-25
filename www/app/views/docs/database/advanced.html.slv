@@ -134,7 +134,7 @@ end
             <pre><code class="language-soli text-sm">Order.transaction do
   order.pay
   order.save
-  after_commit { broadcast("orders", {"paid": order.number}) }
+  after_commit { Channel.broadcast("orders", {"paid": order.number}) }
 end</code></pre>
         </div>
     </div>

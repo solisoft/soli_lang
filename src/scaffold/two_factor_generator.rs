@@ -88,7 +88,10 @@ pub fn create_two_factor(folder: &str) -> Result<(), String> {
 fn passkey_sign_in_skips_the_challenge(app_path: &Path) -> Option<bool> {
     fs::read_to_string(app_path.join("app/controllers/passkey_sessions_controller.sl"))
         .ok()
-        .map(|source| source.contains("session_set(\"two_factor\""))
+        .map(|source| {
+            source.contains("Session.set(\"two_factor\"")
+                || source.contains("session_set(\"two_factor\"")
+        })
 }
 
 /// Next steps after `--two-factor`.
@@ -108,8 +111,8 @@ pub fn print_two_factor_success_message(folder: &str) {
         println!("  Your passkey sign-in was kept as it is, so it is followed by the code");
         println!("  challenge. A passkey already is two factors; to skip the challenge, add");
         println!("  to `create` in app/controllers/passkey_sessions_controller.sl, after");
-        println!("  session_set(\"user_id\", …):");
-        println!("    \x1b[36msession_set(\"two_factor\", \"ok:#{{user._key}}\") if result[\"user_verified\"]\x1b[0m");
+        println!("  Session.set(\"user_id\", …):");
+        println!("    \x1b[36mSession.set(\"two_factor\", \"ok:#{{user._key}}\") if result[\"user_verified\"]\x1b[0m");
     }
     println!("  Docs: /docs/security/authentication#two-factor");
     println!();

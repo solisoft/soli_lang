@@ -42,7 +42,7 @@ class MagicLinksController < Controller
     # Added to what the browser holds, whatever the address: asking again
     # must not undo the link already in the mailbox.
     held = (cookies[MAGIC_LINK_COOKIE] rescue nil).to_s
-    set_cookie(MAGIC_LINK_COOKIE, MagicLink.cookie_with(held, nonce), {
+    Cookie.set(MAGIC_LINK_COOKIE, MagicLink.cookie_with(held, nonce), {
       "path": "/",
       "max_age": MAGIC_LINK_TTL,
       "http_only": true,
@@ -101,7 +101,7 @@ class MagicLinksController < Controller
       user.revoke_credentials if user.never_signed_in?
       user.confirm_email
     end
-    set_cookie(MAGIC_LINK_COOKIE, "", {
+    Cookie.set(MAGIC_LINK_COOKIE, "", {
       "path": "/",
       "max_age": 0,
       "http_only": true,

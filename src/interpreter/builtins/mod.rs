@@ -1,13 +1,14 @@
 //! Built-in functions for Soli.
 
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::{self, Write};
 use std::rc::Rc;
+use std::sync::{Mutex, OnceLock};
 use web_time::{SystemTime, UNIX_EPOCH};
 
 use crate::interpreter::environment::Environment;
-use crate::interpreter::value::{NativeFunction, Value};
+use crate::interpreter::value::{Class, NativeFunction, Value};
 
 crate::request_local! {
     /// The controller action name ("index", "update", ...) for the request the
@@ -28,6 +29,119 @@ pub fn set_current_action(action: &str) {
 /// The action name recorded for the current request, or "" outside a request.
 pub fn current_action_name() -> String {
     CURRENT_ACTION.with(|cell| cell.borrow().clone())
+}
+
+/// Warn once per process that the free function `old` is a deprecated alias
+/// of `replacement` (`PDF.render`, `JWT.sign`). The alias still runs.
+pub(crate) fn deprecate_builtin(old: &str, replacement: &str) {
+    warn_once(
+        old,
+        &format!("warning: {old}() is deprecated; use {replacement}() instead"),
+    );
+}
+
+/// Print `message` on stderr the first time `key` is seen in this process.
+pub(crate) fn warn_once(key: &str, message: &str) {
+    static SEEN: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+    let seen = SEEN.get_or_init(|| Mutex::new(HashSet::new()));
+    let mut guard = seen.lock().unwrap_or_else(|poison| poison.into_inner());
+    if !guard.insert(key.to_string()) {
+        return;
+    }
+    drop(guard);
+    eprintln!("{message}");
+}
+
+/// Rename the call `old(` to `new(` in an error message, where `old` stands
+/// as a whole name. An option or a value echoed in the message
+/// (`"rebroadcast"`, `"set_cookie_path"`) keeps its text.
+pub(crate) fn rename_call_in_error(error: &str, old: &str, new: &str) -> String {
+    let call = format!("{old}(");
+    let mut out = String::with_capacity(error.len());
+    let mut rest = error;
+    while let Some(at) = rest.find(&call) {
+        let starts_a_name = !rest[..at]
+            .chars()
+            .next_back()
+            .is_some_and(|c| c.is_alphanumeric() || c == '_' || c == '.');
+        out.push_str(&rest[..at]);
+        if starts_a_name {
+            out.push_str(new);
+            out.push('(');
+        } else {
+            out.push_str(&call);
+        }
+        rest = &rest[at + call.len()..];
+    }
+    out.push_str(rest);
+    out
+}
+
+/// Publish `class_name` as a static class whose methods are the globals in
+/// `aliases`, and leave each global in place as a deprecated alias.
+///
+/// `aliases` is `(global, method)`: `("pdf_render", "render")` becomes
+/// `PDF.render`, and `pdf_render(...)` keeps working. An error raised through
+/// the class names the class method; the alias keeps the old name, which is
+/// what existing callers match on. Both keep the global's arity and whether a
+/// bare read calls it (`ws_count`, `Channel.count`). A global that is not
+/// registered (a feature-gated builtin on a build without it) is skipped.
+pub(crate) fn bind_deprecated_class(
+    env: &mut Environment,
+    class_name: &str,
+    aliases: &[(&str, &str)],
+) {
+    let mut methods: HashMap<String, Rc<NativeFunction>> = HashMap::new();
+    for (old, method) in aliases {
+        let Some(Value::NativeFunction(native)) = env.get(old) else {
+            continue;
+        };
+        let arity = native.arity;
+        let auto = native.is_auto_invocable;
+        let class_func = native.func.clone();
+        let alias_func = native.func.clone();
+        let old_name = (*old).to_string();
+        let class_call = format!("{class_name}.{method}");
+        let rewrite_from = old_name.clone();
+        let rewrite_to = class_call.clone();
+        methods.insert(
+            (*method).to_string(),
+            Rc::new(NativeFunction::new_with_auto(
+                class_call.clone(),
+                arity,
+                auto,
+                move |args| {
+                    class_func(args)
+                        .map_err(|error| rename_call_in_error(&error, &rewrite_from, &rewrite_to))
+                },
+            )),
+        );
+        let warn_old = old_name.clone();
+        let warn_new = class_call;
+        env.define(
+            old_name,
+            Value::NativeFunction(NativeFunction::new_with_auto(
+                *old,
+                arity,
+                auto,
+                move |args| {
+                    deprecate_builtin(&warn_old, &warn_new);
+                    alias_func(args)
+                },
+            )),
+        );
+    }
+    if methods.is_empty() {
+        return;
+    }
+    env.define(
+        class_name.to_string(),
+        Value::Class(Rc::new(Class {
+            name: class_name.to_string(),
+            native_static_methods: methods,
+            ..Default::default()
+        })),
+    );
 }
 
 /// Zero-argument builtins whose bare name means their value, on both engines:
@@ -70,6 +184,7 @@ pub mod body_limit;
 /// letter and which are the freight, so neither is fetched twice.
 pub mod bodystructure;
 pub mod browser;
+pub mod bytes;
 pub mod cache;
 pub mod clock;
 pub mod collections;
@@ -88,6 +203,7 @@ pub mod factories;
 pub mod fcm;
 pub mod file;
 pub mod flash;
+pub mod framework_classes;
 pub mod geo;
 pub mod hash;
 pub mod hex;
@@ -158,11 +274,13 @@ pub mod pades;
 pub mod pades_tsa;
 #[cfg(feature = "paseto")]
 pub mod paseto;
+pub mod path_class;
 #[cfg(feature = "pdf")]
 pub mod pdf;
 #[cfg(feature = "pdf")]
 pub mod pdf_markdown;
 pub mod permit;
+pub mod policy;
 #[cfg(all(feature = "mail", not(target_arch = "wasm32")))]
 pub mod pop3;
 pub mod primitives;
@@ -225,6 +343,8 @@ pub mod x509;
 #[cfg(feature = "pdf")]
 pub mod x509_issue;
 pub mod xml;
+#[cfg(feature = "office")]
+pub mod zip_archive;
 
 thread_local! {
     /// When `Some`, Soli's `print`/`println` builtins write here instead of
@@ -828,6 +948,10 @@ pub fn register_builtins(env: &mut Environment, include_test_builtins: bool) {
     // by default) so slim builds can drop the pasetors crate.
     #[cfg(feature = "paseto")]
     paseto::register_paseto_builtins(env);
+
+    // Session, Cookie, Channel (deprecated aliases of the free functions),
+    // plus Path, Bytes, Component and Zip. After every global they wrap.
+    framework_classes::register(env);
 }
 
 /// `ValueObject`: the base class of value objects — compared by value, frozen

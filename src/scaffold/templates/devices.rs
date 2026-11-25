@@ -88,7 +88,7 @@ def create(req)
   # Not while an administrator is acting as the user: the device registered
   # would be the administrator's, and would go on receiving this account's
   # notifications after the impersonation ended.
-  unless session_get("impersonator_id").to_s().blank?
+  unless Session.get("impersonator_id").to_s().blank?
     return { "status": 403, "body": json_stringify({ "error": "not while acting as another user" }) }
   end
 
@@ -122,7 +122,7 @@ def create(req)
   # the device would go on receiving the account's notifications.
   # (Where the session carries the account's session version — the auth
   # scaffold's does; an app with its own sign-in has nothing to compare.)
-  let stamped = session_get("session_version")
+  let stamped = Session.get("session_version")
   unless stamped.nil?
     let fresh = nil
     try
@@ -162,7 +162,7 @@ def destroy(req)
   if user_id.nil?
     return { "status": 401, "body": json_stringify({ "error": "login required" }) }
   end
-  unless session_get("impersonator_id").to_s().blank?
+  unless Session.get("impersonator_id").to_s().blank?
     return { "status": 403, "body": json_stringify({ "error": "not while acting as another user" }) }
   end
 

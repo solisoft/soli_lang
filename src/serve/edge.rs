@@ -86,6 +86,7 @@ pub fn boot(folder: &Path) -> Result<(), RuntimeError> {
     let mut boot = Interpreter::new_for_serve();
     crate::interpreter::builtins::mailer::ensure_prelude(&mut boot);
     crate::interpreter::events::ensure_prelude(&mut boot);
+    crate::interpreter::builtins::policy::ensure_prelude(&mut boot);
     if crate::platform::fs::exists(&models_dir) {
         load_models(&mut boot, &models_dir)?;
     }
@@ -142,6 +143,7 @@ pub fn boot(folder: &Path) -> Result<(), RuntimeError> {
     // mailed on the edge failed on `Mailer` being undefined.
     crate::interpreter::builtins::mailer::ensure_prelude(&mut interpreter);
     crate::interpreter::events::ensure_prelude(&mut interpreter);
+    crate::interpreter::builtins::policy::ensure_prelude(&mut interpreter);
     app_loader::load_app_in_worker(
         0,
         &mut interpreter,

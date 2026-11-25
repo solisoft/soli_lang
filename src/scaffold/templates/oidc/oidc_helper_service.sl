@@ -112,7 +112,7 @@ def oidc_id_token(user, client_id, scopes, nonce, auth_time, access_token)
   claims["auth_time"] = auth_time unless auth_time.nil?
   claims["at_hash"] = oidc_at_hash(access_token) unless access_token.blank?
 
-  jwt_sign(claims, "", options)
+  JWT.sign(claims, "", options)
 end
 
 # Left-most 128 bits of the SHA-256 of the access token, base64url (OIDC Core
@@ -138,7 +138,7 @@ def oidc_access_token(user_key, client_id, scopes, jti, extra_claims = {})
   claims = {"sub": user_key, "scope": scopes.join(" ")}
   extra_claims.keys.each { |name| claims[name] = extra_claims[name] }
 
-  jwt_sign(claims, "", options)
+  JWT.sign(claims, "", options)
 end
 
 # Is this address still within `limit` calls per window for `bucket`? Each
@@ -159,7 +159,7 @@ end
 def oidc_verify_access_token(token)
   return null if token.blank?
 
-  # `jwt_verify` reports most failures as `{error: true, ...}` but *raises* when
+  # `JWT.verify` reports most failures as `{error: true, ...}` but *raises* when
   # the token is malformed enough that the header will not parse — which is
   # exactly what an attacker sends. Both have to be caught, or a garbage bearer
   # token becomes a 500 instead of a 401.
@@ -169,7 +169,7 @@ def oidc_verify_access_token(token)
   for key in [oidc_public_key(), oidc_previous_public_key()]
     next if key.blank? || !claims.nil?
 
-    verified = jwt_verify(token, "", {
+    verified = JWT.verify(token, "", {
       "algorithm": "RS256",
       "key": key,
       "issuer": oidc_issuer()

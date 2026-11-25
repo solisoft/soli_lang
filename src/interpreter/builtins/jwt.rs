@@ -184,7 +184,8 @@ fn check_authorized_party(
 }
 
 pub fn register_jwt_builtins(env: &mut Environment) {
-    // jwt_sign(payload, secret, options?) -> token string
+    // jwt_sign(payload, secret, options?) -> token string.
+    // `JWT.sign` is the class form; this name stays as a deprecated alias.
     env.define(
         "jwt_sign".to_string(),
         Value::NativeFunction(NativeFunction::new("jwt_sign", None, |args| {
@@ -810,12 +811,25 @@ pub fn register_jwt_builtins(env: &mut Environment) {
         "jwt_decode".to_string(),
         Value::NativeFunction(NativeFunction::new("jwt_decode", None, |_args| {
             Err(
-                "jwt_decode() has been removed (SEC-029). It returned the same shape as a verified jwt_verify(), \
-                 making `claims[\"sub\"]` a silent auth bypass. Use jwt_verify(token, secret) for authenticated reads, \
-                 or jwt_decode_unsafe(token) for inspection (returns `{unverified: true, claims: {...}}`)."
+                "jwt_decode() has been removed (SEC-029). It returned the same shape as a verified JWT.verify(), \
+                 making `claims[\"sub\"]` a silent auth bypass. Use JWT.verify(token, secret) for authenticated reads, \
+                 or JWT.decode_unsafe(token) for inspection (returns `{unverified: true, claims: {...}}`). \
+                 jwt_verify and jwt_decode_unsafe still run, and are deprecated aliases of those."
                     .to_string(),
             )
         })),
+    );
+
+    // `JWT.sign` / `JWT.verify` / `JWT.decode_unsafe`. `jwt_decode` stays the
+    // removal stub above: it is not a method.
+    crate::interpreter::builtins::bind_deprecated_class(
+        env,
+        "JWT",
+        &[
+            ("jwt_sign", "sign"),
+            ("jwt_verify", "verify"),
+            ("jwt_decode_unsafe", "decode_unsafe"),
+        ],
     );
 }
 
@@ -917,6 +931,39 @@ mod tests {
         let mut env = Environment::new();
         register_jwt_builtins(&mut env);
         env
+    }
+
+    fn jwt_method(env: &Environment, name: &str) -> NativeFunction {
+        match env.get("JWT") {
+            Some(Value::Class(class)) => class
+                .native_static_methods
+                .get(name)
+                .cloned()
+                .unwrap_or_else(|| panic!("JWT.{name} is not registered"))
+                .as_ref()
+                .clone(),
+            other => panic!("expected the JWT class, got {other:?}"),
+        }
+    }
+
+    /// `JWT.sign` is the same operation as `jwt_sign`. The free function stays,
+    /// and a call through the class names itself in the error.
+    #[test]
+    fn jwt_class_sign_matches_the_deprecated_alias() {
+        let env = fresh_env();
+        let mut payload: HashPairs = HashPairs::default();
+        payload.insert(HashKey::String("sub".into()), Value::String("alice".into()));
+        let payload = Value::Hash(Rc::new(RefCell::new(payload)));
+        let secret = Value::String("x".repeat(32).into());
+        let args = [payload, secret];
+
+        let via_class = (jwt_method(&env, "sign").func)(&args).expect("JWT.sign");
+        let via_alias = (jwt_fn(&env, "jwt_sign").func)(&args).expect("jwt_sign");
+        assert_eq!(via_class, via_alias);
+
+        let err = (jwt_method(&env, "sign").func)(&[]).expect_err("arity");
+        assert!(err.contains("JWT.sign()"), "{err}");
+        assert!(!err.contains("jwt_sign"), "{err}");
     }
 
     /// SEC-029: a token signed with a known secret can be inspected via

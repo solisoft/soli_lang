@@ -389,7 +389,7 @@ assert(signed_out());
 
 ### Custom Session Data
 
-**with_session(data)** writes arbitrary key/value pairs into the test server's session and sets a matching `session_id` cookie. Subsequent requests in the same test see the data via `session_get(...)` on the server — under every session driver, the default in-memory one included: `as_user`, `sign_in` and `with_session` write into the server's own store, not the runner's.
+**with_session(data)** writes arbitrary key/value pairs into the test server's session and sets a matching `session_id` cookie. Subsequent requests in the same test see the data via `Session.get(...)` on the server — under every session driver, the default in-memory one included: `as_user`, `sign_in` and `with_session` write into the server's own store, not the runner's.
 
 ```soli
 with_session({

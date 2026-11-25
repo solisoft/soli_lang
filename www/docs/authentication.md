@@ -1,10 +1,10 @@
 # Authentication with JWT
 
-SoliLang provides built-in JWT (JSON Web Token) functions for stateless authentication.
+SoliLang provides a built-in `JWT` class for stateless authentication. `jwt_sign` and `jwt_verify` are deprecated aliases of `JWT.sign` and `JWT.verify`: they still run, and each warns once per process.
 
 ## Creating Tokens
 
-Use `jwt_sign()` to create tokens for authenticated users:
+Use `JWT.sign` to create tokens for authenticated users:
 
 ```soli
 def login
@@ -20,7 +20,7 @@ def login
       "name": "Administrator"
     };
     secret = getenv("JWT_SECRET");
-    token = jwt_sign(payload, secret, {"expires_in": 3600});
+    token = JWT.sign(payload, secret, {"expires_in": 3600});
 
     return {
       "status": 200,
@@ -37,7 +37,7 @@ end
 
 ## Verifying Tokens
 
-Use `jwt_verify()` to validate tokens and extract claims:
+Use `JWT.verify()` to validate tokens and extract claims:
 
 ```soli
 def authenticate_middleware
@@ -48,7 +48,7 @@ def authenticate_middleware
   end
 
   token = Regex.replace("^Bearer ", auth_header, "");
-  result = jwt_verify(token, getenv("JWT_SECRET"));
+  result = JWT.verify(token, getenv("JWT_SECRET"));
 
   if result["error"] == true
     return {"status": 401, "body": "Invalid token: " + result["message"]};
@@ -62,7 +62,7 @@ end
 
 ## Decoding Tokens (Unsafe — Inspection Only)
 
-`jwt_decode_unsafe()` reads token claims **without** verification. The result is wrapped as `{unverified: true, claims: {...}}` so it cannot be confused with a verified `jwt_verify` response. **Never trust these claims for authentication** — use `jwt_verify(token, secret)` for that.
+`JWT.decode_unsafe()` reads token claims **without** verification. The result is wrapped as `{unverified: true, claims: {...}}` so it cannot be confused with a verified `JWT.verify` response. **Never trust these claims for authentication** — use `JWT.verify(token, secret)` for that.
 
 ```soli
 def get_token_info
@@ -70,7 +70,7 @@ def get_token_info
   token = Regex.replace("^Bearer ", token, "");
 
   # SEC-029: explicit "I am NOT verifying" — inspection only.
-  let result = jwt_decode_unsafe(token);
+  let result = JWT.decode_unsafe(token);
   let claims = result["claims"];
 
   {
@@ -85,15 +85,15 @@ def get_token_info
 end
 ```
 
-The previous `jwt_decode(token)` builtin returned the same shape as `jwt_verify`, which made `claims["sub"]` a silent auth bypass when the caller forgot the verification step. It was removed in SEC-029; calling it raises a migration error.
+The previous `jwt_decode(token)` builtin returned the same shape as `JWT.verify`, which made `claims["sub"]` a silent auth bypass when the caller forgot the verification step. It was removed in SEC-029; calling it raises a migration error.
 
 ## API Reference
 
-### jwt_sign
+### JWT.sign
 
 ```soli
-jwt_sign(payload, secret)
-jwt_sign(payload, secret, options)
+JWT.sign(payload, secret)
+JWT.sign(payload, secret, options)
 ```
 
 | Parameter | Type | Description |
@@ -106,11 +106,11 @@ jwt_sign(payload, secret, options)
 | `options.algorithm` | String | Algorithm: "HS256", "HS384", "HS512", "RS256", "ES256", "EdDSA" (optional) |
 | `options.key` | String | PEM-encoded private key for RS256/ES256/EdDSA (optional; ES256 takes a P-256 key in PKCS#8 form, as Apple's `.p8`) |
 
-### jwt_verify
+### JWT.verify
 
 ```soli
-jwt_verify(token, secret)
-jwt_verify(token, secret, options)
+JWT.verify(token, secret)
+JWT.verify(token, secret, options)
 ```
 
 | Parameter | Type | Description |
@@ -118,19 +118,19 @@ jwt_verify(token, secret, options)
 | `token` | String | The JWT token |
 | `secret` | String | Secret key for HMAC, or public key material for RS256/ES256/EdDSA |
 | `options.key` | String | PEM-encoded public key for RS256/ES256/EdDSA (optional) |
-| `options.algorithm`, `audience`, `issuer`, `subject`, `authorized_party`, `leeway` | | See [jwt_verify](/docs/builtins/jwt#def-jwt-verify) |
+| `options.algorithm`, `audience`, `issuer`, `subject`, `authorized_party`, `leeway` | | See [JWT.verify](/docs/builtins/jwt#def-jwt-verify) |
 
 Returns a hash with claims if valid, or `{"error": true, "message": "..."}` if invalid. An unknown option name (`aud` for `audience`, say) or a value of the wrong type raises instead of being skipped.
 
-### jwt_decode_unsafe
+### JWT.decode_unsafe
 
 ```soli
-jwt_decode_unsafe(token)
+JWT.decode_unsafe(token)
 ```
 
 Returns `{unverified: true, claims: {...}}` without verifying signature or expiration. Use only for inspection or debugging; never for authentication. The result wrapper makes it impossible to do `result["sub"]` and silently trust an attacker-forged claim — use `result["claims"]["sub"]` and accept it only if you've verified the token elsewhere.
 
-The legacy `jwt_decode(token)` was removed in SEC-029 because it returned the same shape as `jwt_verify`, making accidental misuse a one-character bug.
+The legacy `jwt_decode(token)` was removed in SEC-029 because it returned the same shape as `JWT.verify`, making accidental misuse a one-character bug.
 
 ## Best Practices
 
@@ -213,7 +213,7 @@ session, so its sign-in is followed by the challenge; the generator prints the
 one line to add to `passkey_sessions#create`:
 
 ```soli
-session_set("two_factor", "ok:#{user._key}") if result["user_verified"]
+Session.set("two_factor", "ok:#{user._key}") if result["user_verified"]
 ```
 
 **Limits.** Authenticator apps only: no SMS or email codes, and no "trust this
@@ -388,7 +388,7 @@ public `https://` URL.
    nobody in a second time.
 4. It then opens the session exactly as the password login does: the per-IP
    throttle (`AUTH_ATTEMPTS_PER_IP`), the locked and confirmed gates,
-   `session_regenerate()`, `user_id` and `session_version`.
+   `Session.regenerate`, `user_id` and `session_version`.
 
 A single-sign-on-only account ([SAML](/docs/security/saml),
 `user.sso_only?`) registers no passkey (`POST /passkeys/options` and

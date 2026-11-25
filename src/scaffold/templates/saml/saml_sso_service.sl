@@ -147,15 +147,15 @@ class SamlSso
     unless SamlSso.secure_origin?
       Logger.warn("SAML: APP_BASE_URL is not https:// — browsers drop the request cookie, sign-in will fail")
     end
-    options = SAML_REQUEST_COOKIE.merge({"encrypted": true, "max_age": 600})
-    set_cookie(SamlSso.request_cookie, {"id": request["id"], "return_to": return_to}, options)
+    options = SAML_REQUEST_COOKIE.merge({"max_age": 600})
+    Cookie.encrypted(SamlSso.request_cookie, {"id": request["id"], "return_to": return_to}, options)
     request["url"]
   end
 
   # Finish a sign-in: the verified assertion and where to go next. Raises on
   # anything short of a valid response to the request this browser started.
   static def finish(saml_response)
-    pending = read_cookie(SamlSso.request_cookie, {"encrypted": true})
+    pending = Cookie.encrypted(SamlSso.request_cookie)
     throw "no sign-in in progress in this browser" if pending.nil?
 
     idp = SamlSso.identity_provider
@@ -169,7 +169,7 @@ class SamlSso
     # A request is answered once. Cleared only now: any site can make a
     # browser post to /saml/acs, and clearing it first let one cancel the
     # sign-in in progress.
-    set_cookie(SamlSso.request_cookie, "", SAML_REQUEST_COOKIE.merge({"max_age": 0}))
+    Cookie.set(SamlSso.request_cookie, "", SAML_REQUEST_COOKIE.merge({"max_age": 0}))
     SamlSso.spend(assertion)
     {"assertion": assertion, "return_to": pending["return_to"]}
   end

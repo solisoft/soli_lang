@@ -190,11 +190,11 @@ def direct_upload_start(model: Any, field_name: String, filename: String, conten
     return { "error": "#{field_name} must be under #{(config["max_size"] / 1000000).to_s} MB." } if size > config["max_size"]
 
     upload = direct_upload(config, { "filename": filename, "content_type": content_type, "size": size }, expires_in)
-    started = session_get("__soli_direct_uploads") ?? []
+    started = __soli_session_get("__soli_direct_uploads") ?? []
     started.push("#{field_name}:#{upload["id"]}")
     # Bounded: the cookie session driver carries this in a ~4KB cookie.
     started = started.slice(started.length() - 10, started.length()) if started.length() > 10
-    session_set("__soli_direct_uploads", started)
+    __soli_session_set("__soli_direct_uploads", started)
     upload
 end
 
@@ -209,7 +209,7 @@ def direct_upload_finish(model: Any, field_name: String, blob_id: String) -> Boo
     end
 
     ticket = "#{field_name}:#{blob_id}"
-    started = session_get("__soli_direct_uploads") ?? []
+    started = __soli_session_get("__soli_direct_uploads") ?? []
     if !started.contains(ticket)
         model._errors = [{ "message": "No upload for #{field_name} was started with that id." }]
         return false
@@ -221,7 +221,7 @@ def direct_upload_finish(model: Any, field_name: String, blob_id: String) -> Boo
         return false
     end
     # Arrived: the id is spent, whatever the checks below decide.
-    session_set("__soli_direct_uploads", started.filter(fn(t) t != ticket))
+    __soli_session_set("__soli_direct_uploads", started.filter(fn(t) t != ticket))
 
     types = config["content_types"] ?? []
     if (types.length() > 0 && !types.contains(head["content_type"])) || head["size"] > config["max_size"]

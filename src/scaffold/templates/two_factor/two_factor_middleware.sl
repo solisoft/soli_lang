@@ -19,11 +19,11 @@ def require_second_factor(req)
   user = req["current_user"]
   return req if user.nil?
 
-  state = session_get("two_factor").to_s
+  state = Session.get("two_factor").to_s
   return req if ["ok:#{user._key}", "off:#{user._key}"].includes?(state)
 
   unless TwoFactor.enabled?(user)
-    session_set("two_factor", "off:#{user._key}")
+    Session.set("two_factor", "off:#{user._key}")
     return req
   end
 

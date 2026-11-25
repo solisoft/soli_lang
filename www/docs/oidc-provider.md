@@ -129,18 +129,18 @@ requester.
 ### 4. Record when the user signed in, and come back mid-flow
 
 **Every path that signs a user in** records the moment, next to its
-`session_set("user_id", …)`. Apps generated after 2.39.3 already do it in each
+`Session.set("user_id", …)`. Apps generated after 2.39.3 already do it in each
 scaffold below (and impersonation already deletes it); in an app generated
 earlier, the generator does not modify files it did not create, so make these
 edits yourself:
 
 ```soli
-session_set("auth_time", DateTime.utc.to_unix)
+Session.set("auth_time", DateTime.utc.to_unix)
 ```
 
 | Sign-in path | Where |
 |---|---|
-| Password | `SessionsController#create` (`app/controllers/sessions_controller.sl`), next to `session_regenerate()` |
+| Password | `SessionsController#create` (`app/controllers/sessions_controller.sl`), next to `Session.regenerate` |
 | Two-factor | `TwoFactorController#verify` (`--two-factor`): the code check that finishes the sign-in |
 | Sign-up | `RegistrationsController#create`, which signs the new account in |
 | Password reset | `PasswordsController#update`, which signs the user in with the new password |
@@ -152,7 +152,7 @@ session_set("auth_time", DateTime.utc.to_unix)
 A remember-me cookie that restores a session (`load_current_user`) is not a
 sign-in: leave `auth_time` unset there, so `max_age` asks for a real one.
 
-**Impersonation** (`--impersonation`) must `session_delete("auth_time")` when an
+**Impersonation** (`--impersonation`) must `Session.delete("auth_time")` when an
 admin starts and when they stop impersonating: the session then belongs to
 someone who did not sign in at that time, and a relying party asking `max_age`
 must hear "unknown", not "fresh".
@@ -161,8 +161,8 @@ Then, in `SessionsController#create`, replace the final `return redirect("/")`
 with:
 
 ```soli
-destination = session_get("oidc_return_to") ?? "/"
-session_delete("oidc_return_to")
+destination = Session.get("oidc_return_to") ?? "/"
+Session.delete("oidc_return_to")
 return redirect(destination)
 ```
 
@@ -440,12 +440,12 @@ cannot be extended.
 shows a confirmation page that posts back (CSRF-checked), so an
 `<img src="/oauth/logout">` on another site logs no one out. The page is skipped,
 and `post_logout_redirect_uri` honoured, only for an `id_token_hint` this
-provider signed: verified with `jwt_verify` (RS256, the active or previous key,
+provider signed: verified with `JWT.verify` (RS256, the active or previous key,
 your issuer), with a year of leeway on the expiry because RP-Initiated Logout
 lets a relying party send an id_token that has since expired. The hint must name
 the user signed in here — another user's real id_token for the same client
 still gets the confirmation page — and an access token is not accepted as a
-hint. The hint used to be read with `jwt_decode_unsafe`, so anyone could forge
+hint. The hint used to be read with `JWT.decode_unsafe`, so anyone could forge
 one naming any client and skip the confirmation.
 
 With **no one signed in** there is nothing to end, and nothing ties the request
@@ -479,5 +479,5 @@ oauth` writes the consumer side — see [OAuth Client](oauth-client.md); its sha
 one app can be both. To hand-roll it, see the [GitHub](/docs/blog/github-oauth)
 and [Google](/docs/blog/google-oauth) guides. Generate `state` and the PKCE
 verifier with `Crypto.random_token()`, and verify the `id_token` against the
-provider's JWKS with `jwt_verify(token, "", {"algorithm": "RS256", "key": pem,
+provider's JWKS with `JWT.verify(token, "", {"algorithm": "RS256", "key": pem,
 "issuer": …, "audience": …})`.

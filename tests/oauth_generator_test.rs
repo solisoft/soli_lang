@@ -1002,7 +1002,7 @@ fn served_app_signs_in_links_and_refuses() {
     fs::write(
         root.join("secret.sl"),
         format!(
-            "claims = jwt_verify(\"{secret}\", \"\", {{\"algorithm\": \"ES256\", \"key\": File.read(\"config/apple_key.pub\"), \"audience\": \"https://appleid.apple.com\"}})\nprint(\"#{{claims[\"iss\"]}} #{{claims[\"sub\"]}} #{{claims[\"aud\"]}}\")\n"
+            "claims = JWT.verify(\"{secret}\", \"\", {{\"algorithm\": \"ES256\", \"key\": File.read(\"config/apple_key.pub\"), \"audience\": \"https://appleid.apple.com\"}})\nprint(\"#{{claims[\"iss\"]}} #{{claims[\"sub\"]}} #{{claims[\"aud\"]}}\")\n"
         ),
     )
     .unwrap();
@@ -1347,7 +1347,7 @@ fn oauth_sso_clears_stale_links_and_stamps_auth_time() {
         .and_then(|rest| rest.split("\n  end").next())
         .unwrap();
     assert!(
-        begin_state.contains(r#"session_delete("oauth_link_user")"#),
+        begin_state.contains(r#"Session.delete("oauth_link_user")"#),
         "{begin_state}"
     );
     assert!(

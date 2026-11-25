@@ -592,7 +592,7 @@ the build stops and says so.
 # GET /invoices/:id.pdf
 def show(req)
   invoice = Invoice.find(params["id"])
-  pdf_response(InvoiceDocument.template.to_json, invoice.to_json)
+  PDF.response(InvoiceDocument.template.to_json, invoice.to_json)
 end
 ```
 
@@ -600,11 +600,11 @@ end
 
 | Works | Does not |
 |-------|----------|
-| `pdf_render`, `pdf_response`, `pdf_from_markdown`, `pdf_layout_map` | |
-| `pdf_preview`, `pdf_preview_from_markdown`, `pdf_preview_response` as PNG (the default) or `"format": "jpeg"` | `"format": "webp"`: its encoder is C; `out_dir` |
-| `pdf_facturx`, `pdf_facturx_from_invoice`, `pdfa`, `password` | `stationery`, `attachments` and images given as a path |
-| `pdf_merge`, `pdf_pages`, `pdf_stamp`, `pdf_text`, `pdf_attachments`, `pdf_extract_facturx` on base64 | the same on a path |
-| `pdf_sign`, `pdf_verify` and the `sign` option, with the certificate and key as PEM strings (Worker secrets) | PEM files |
+| `PDF.render`, `PDF.response`, `PDF.from_markdown`, `PDF.layout_map` | |
+| `PDF.preview`, `PDF.preview_from_markdown`, `PDF.preview_response` as PNG (the default) or `"format": "jpeg"` | `"format": "webp"`: its encoder is C; `out_dir` |
+| `PDF.facturx`, `PDF.facturx_from_invoice`, `pdfa`, `password` | `stationery`, `attachments` and images given as a path |
+| `PDF.merge`, `PDF.pages`, `PDF.stamp`, `PDF.text`, `PDF.attachments`, `PDF.extract_facturx` on base64 | the same on a path |
+| `PDF.sign`, `PDF.verify` and the `sign` option, with the certificate and key as PEM strings (Worker secrets) | PEM files |
 | images from an `https` URL (through `fetch`, SSRF-checked) or a `data:` URI | your own fonts, a monospaced face, CJK text |
 
 - **Fonts.** A Worker has no `font/` folder, so the runtime falls back to four
@@ -627,7 +627,7 @@ end
 | models on D1, PostgreSQL (Hyperdrive), or SoliDB over HTTP(S) | MySQL, SQLite, the native SoliDB driver; transactions on D1 |
 | the `HTTP` class (`fetch`); `HTTP.parallel*` run one after another | `--dev`: hot reload, dev bar, REPL |
 | static files from `public/`; attachments on R2, with `Range` and image transforms | Office, the `Image` class, `System.run` |
-| [PDF](#pdf), with `--pdf`: `pdf_render`, `pdf_response`, `pdf_from_markdown`, Factur-X, signatures, PNG and JPEG previews | WebP previews, your own font files |
+| [PDF](#pdf), with `--pdf`: `PDF.render`, `PDF.response`, `PDF.from_markdown`, Factur-X, signatures, PNG and JPEG previews | WebP previews, your own font files |
 
 A builtin that needs what a Worker lacks returns an error naming the edge
 build ("… is not available on the edge (Cloudflare Workers) build").

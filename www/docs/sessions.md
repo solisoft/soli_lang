@@ -2,6 +2,10 @@
 
 SoliLang provides built-in session management with cookie-based session IDs and in-memory storage.
 
+`Session` is the class: `Session.get`, `Session.set`, `Session.delete`, `Session.has`, `Session.destroy`, `Session.regenerate`, `Session.id`, `Session.driver`, `Session.configure`, `Session.config`. Flash is that object's mailbox: `Session.flash`, `Session.flash_now`, `Session.flashes`. The free functions (`session_get`, `session_set`, `flash`, and the rest) still run, and each warns once per process that it is deprecated. `csrf_token` stays a function.
+
+`Cookie.set` writes a raw cookie and `Cookie.read` reads one. `Cookie.signed(name)` reads a signed cookie; `Cookie.signed(name, value, options?)` writes one. `Cookie.encrypted` is the encrypted pair, and the mode is forced on. `set_cookie` and `read_cookie` still run and warn once. The `cookies` request hash is unchanged, and it is not a place to read a value you need to trust.
+
 ## Enabling Sessions
 
 Sessions are automatically available in your controllers. The session cookie is set on all responses.
@@ -13,15 +17,15 @@ Sessions are automatically available in your controllers. The session cookie is 
 ```soli
 def profile
   # Check if user is logged in
-  if session_get("authenticated") != true
+  if Session.get("authenticated") != true
     return {"status": 401, "body": "Please log in"};
   end
 
   {
     "status": 200,
     "body": json_stringify({
-      "user": session_get("user"),
-      "email": session_get("email")
+      "user": Session.get("user"),
+      "email": Session.get("email")
     })
   }
 end
@@ -35,9 +39,9 @@ def login
   username = data["username"];
 
   # Store user data in session
-  session_set("user", username);
-  session_set("role", "admin");
-  session_set("authenticated", true);
+  Session.set("user", username);
+  Session.set("role", "admin");
+  Session.set("authenticated", true);
 
   {
     "status": 200,
@@ -50,7 +54,7 @@ end
 
 ```soli
 def is_logged_in() -> Bool
-  session_has("authenticated") && session_get("authenticated") == true
+  Session.has("authenticated") && Session.get("authenticated") == true
 end
 ```
 
@@ -58,7 +62,7 @@ end
 
 ```soli
 def remove_item
-  removed = session_delete("temporary_data");
+  removed = Session.delete("temporary_data");
   print("Removed:", removed);
   {"status": 200}
 end
@@ -76,11 +80,11 @@ def login
 
   if verify_credentials(data["username"], data["password"])
     # Regenerate session for security
-    session_regenerate();
+    Session.regenerate;
 
     # Now set auth data
-    session_set("user_id", get_user_id(data["username"]));
-    session_set("authenticated", true);
+    Session.set("user_id", get_user_id(data["username"]));
+    Session.set("authenticated", true);
 
     return {"status": 200, "body": "Logged in"};
   end
@@ -93,7 +97,7 @@ end
 
 ```soli
 def logout
-  session_destroy();
+  Session.destroy;
 
   {
     "status": 200,
@@ -109,7 +113,7 @@ Create a reusable authentication middleware:
 ```soli
 # app/middleware/auth.sl
 def require_auth
-  if !session_has("authenticated") || session_get("authenticated") != true
+  if !Session.has("authenticated") || Session.get("authenticated") != true
     return {
       "status": 401,
       "body": json_stringify({"error": "Authentication required"})
@@ -124,7 +128,7 @@ def require_role(req, required_role: String)
     return result;  # Return auth error
   end
 
-  user_role = session_get("role");
+  user_role = Session.get("role");
   if user_role != required_role
     return {
       "status": 403,
@@ -147,7 +151,7 @@ post("/users", "users#create", ["auth", "role:admin"]);
 
 ## Flash Messages
 
-A flash is a message that survives exactly one redirect. `flash(type, message)` queues it in the session; `flashes()` in the layout takes it out and shows it once.
+A flash is a message that survives exactly one redirect. `Session.flash(type, message)` queues it in the session; `Session.flashes` in the layout takes it out and shows it once.
 
 ```soli
 # POST /posts
@@ -155,43 +159,43 @@ def create(req)
   @post = Post.create(permit(params, {"title": true}))
   return render("posts/new", {}, {"status": 422}) if @post._errors
 
-  flash("success", "Post saved.")
+  Session.flash("success", "Post saved.")
   redirect(post_path(@post))
 end
 ```
 
 ```erb
 <%# app/views/layouts/application.html.slv %>
-<% flashes().each do |f| %>
+<% Session.flashes.each do |f| %>
   <div class="flash flash-<%= f.type %>"><%= f.message %></div>
 <% end %>
 ```
 
-- `flashes()` returns an array of `{"type", "message"}` hashes. Its first call in a request takes the queue out of the session; later calls answer the same list, so a layout and a partial can both read it. A page with nothing queued costs one session read and no write.
-- `flash_now(type, message)` adds a message to this request's `flashes()` only — the form re-rendered with errors. It never touches the session.
-- A `flash` set before the request's first `flashes()` shows in that render; one set after it waits for the next request.
+- `Session.flashes` returns an array of `{"type", "message"}` hashes. Its first call in a request takes the queue out of the session; later calls answer the same list, so a layout and a partial can both read it. A page with nothing queued costs one session read and no write.
+- `Session.flash_now(type, message)` adds a message to this request's `Session.flashes` only — the form re-rendered with errors. It never touches the session.
+- A `flash` set before the request's first `Session.flashes` shows in that render; one set after it waits for the next request.
 - The queue lives under the session key `_flashes`. An app that defines its own `def flash` keeps it: the `def` replaces the builtin.
 
 ## API Reference
 
 | Function | Description |
 |----------|-------------|
-| `session_id()` | Returns current session ID or `null` |
-| `session_get(key)` | Get value from session |
-| `session_set(key, value)` | Store value in session |
-| `session_has(key)` | Check if key exists |
-| `session_delete(key)` | Remove key and return value |
-| `session_regenerate()` | Create new session ID |
-| `session_destroy()` | Destroy entire session |
-| `flash(type, message)` | Queue a message for the next request |
-| `flash_now(type, message)` | A message for this request's render only |
-| `flashes()` | Take and return the messages to show now |
+| `Session.id` | Returns current session ID or `null` |
+| `Session.get(key)` | Get value from session |
+| `Session.set(key, value)` | Store value in session |
+| `Session.has(key)` | Check if key exists |
+| `Session.delete(key)` | Remove key and return value |
+| `Session.regenerate` | Create new session ID |
+| `Session.destroy` | Destroy entire session |
+| `Session.flash(type, message)` | Queue a message for the next request |
+| `Session.flash_now(type, message)` | A message for this request's render only |
+| `Session.flashes` | Take and return the messages to show now |
 
 ## Storage
 
 Sessions are stored in-memory by default: fast, but lost on restart and not
 shared between hosts. For production, pick a driver via `SOLI_SESSION_DRIVER`
-(or `session_configure`):
+(or `Session.configure`):
 
 | Driver | Description | Requires |
 |--------|-------------|----------|
@@ -216,7 +220,7 @@ export SOLI_SESSION_SECRET=$(openssl rand -hex 32)   # 32+ characters, keep stab
 Or at runtime:
 
 ```soli
-session_configure({"driver": "cookie", "secret": getenv("SOLI_SESSION_SECRET")})
+Session.configure({"driver": "cookie", "secret": getenv("SOLI_SESSION_SECRET")})
 ```
 
 How it works:
@@ -226,7 +230,7 @@ How it works:
 - Clients can neither read nor forge session contents. A tampered, expired,
   or foreign-key blob is silently replaced by a fresh empty session, exactly
   like an unknown session ID on the server-side drivers.
-- `session_id()` still returns a stable internal UUID (carried inside the
+- `Session.id` still returns a stable internal UUID (carried inside the
   payload), not the blob.
 - The cookie is only re-emitted when the session actually changed, so
   read-only requests stay cacheable.
@@ -237,7 +241,7 @@ Trade-offs to be aware of:
   refuses to seal — the write is dropped with a loud log line and the
   client keeps its previous cookie. Store identifiers (`user_id`), not
   records.
-- **No server-side revocation.** `session_destroy` overwrites the client's
+- **No server-side revocation.** `Session.destroy` overwrites the client's
   copy, but a stolen cookie stays valid until its TTL passes. Rotating
   `SOLI_SESSION_SECRET` is the kill switch — it invalidates every
   outstanding session at once.
@@ -246,7 +250,7 @@ Trade-offs to be aware of:
 - **Absolute lifetime.** A session that keeps being written would otherwise
   never expire, and neither would a stolen copy of it. `SOLI_SESSION_MAX_LIFETIME`
   (seconds, default `2592000` — 30 days; `0` disables) caps a session's age
-  counted from when it was issued, however active it is. `session_regenerate()`
+  counted from when it was issued, however active it is. `Session.regenerate`
   restarts the clock — call it at login. A cookie issued before this existed
   counts from its `iat`.
 
@@ -262,15 +266,15 @@ use a server-side driver (`solidb`, `solikv`, `disk`) instead.
 - **An absolute lifetime.** `SOLI_SESSION_MAX_LIFETIME` (seconds, default 30
   days, `0` = none) caps a session's age counted from its creation, on every
   driver (through 2.39.0, only on the cookie driver: a server-side session
-  kept busy, or a stolen id kept busy, never expired). `session_regenerate()`
+  kept busy, or a stolen id kept busy, never expired). `Session.regenerate`
   starts a new session, with a new lifetime.
-- **`session_destroy()` starts an empty session.** The old one is deleted,
+- **`Session.destroy` starts an empty session.** The old one is deleted,
   the request carries on with a fresh id, and the response sets the cookie to
   it — a `flash` after the destroy lands in the new session. Through 2.39.0
   the request kept the dead id and no cookie was sent.
 - **A logout stays a logout.** On the `disk`, `solidb` and `solikv` drivers a
   write loads the session, changes it and saves it back; a write in flight
-  during `session_destroy()` or `session_regenerate()` could save it back
+  during `Session.destroy` or `Session.regenerate` could save it back
   after the delete, `user_id` included. Each step now holds the session id's
   lock and a write whose session is gone does nothing. The locks are per
   process: several processes sharing one `disk` directory are not covered.

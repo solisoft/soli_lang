@@ -79,19 +79,19 @@ answer grounded in your own data, retrieve the context first with `Model.rag` or
 trade for a finite job, and the wrong one for a dashboard with thousands of viewers who are
 mostly idle — one worker per idle connection exhausts the pool.
 
-For that shape, subscribe instead. `sse_subscribe(req, topic)` registers the connection and
-returns immediately, holding no worker, and `sse_broadcast(topic, data, event?)` fans an event
+For that shape, subscribe instead. `Channel.subscribe(req, topic)` registers the connection and
+returns immediately, holding no worker, and `Channel.sse_broadcast(topic, data, event?)` fans an event
 out to every subscriber from any controller, job, or model callback.
 
 ```soli
 # Each browser holds a cheap async connection — not a worker.
 def subscribe(req)
-  sse_subscribe(req, "user:#{current_user.id}")
+  Channel.subscribe(req, "user:#{current_user.id}")
 end
 
 # Push from anywhere — a controller action, a background job, a callback.
 def notify(req)
-  reached = sse_broadcast("user:#{params["id"]}", params["msg"], "alert")
+  reached = Channel.sse_broadcast("user:#{params["id"]}", params["msg"], "alert")
   render_json({ "delivered": reached })
 end
 ```
@@ -102,7 +102,7 @@ es.addEventListener("alert", e => toast(e.data))
 ```
 
 A subscription costs an async task rather than a thread, so one worker can hold thousands of
-them. Disconnected clients are pruned on the next broadcast, and `sse_subscribers(topic)`
+them. Disconnected clients are pruned on the next broadcast, and `Channel.subscribers(topic)`
 returns the current count.
 
 ### Streaming a model's answer to a page
@@ -112,7 +112,7 @@ or a job holds a thread the whole time. Hand it to
 [`HTTP.stream_to`](builtins.md#httpstream_tomethod-url-options-body-to)
 instead: it reads the answer on the HTTP runtime, broadcasts each new piece to
 a topic as a `delta` event, and enqueues a job with the whole text at the end.
-The page subscribes to the topic with `sse_subscribe`, and nothing waits in
+The page subscribes to the topic with `Channel.subscribe`, and nothing waits in
 between.
 
 ```soli
@@ -120,9 +120,9 @@ HTTP.stream_to("POST", url, headers, body,
   {"format": "anthropic", "topic": "chat:#{chat._key}", "job": "AnswerDoneJob", "args": {"chat": chat._key}})
 ```
 
-## One call, both transports: `broadcast`
+## One call, both transports: `Channel.broadcast`
 
-`broadcast(channel, payload)` fans `payload` out to both the WebSocket channel and the SSE
+`Channel.broadcast(channel, payload)` fans `payload` out to both the WebSocket channel and the SSE
 topic of the same name, so a page listens over whichever transport it uses and you publish
 once. Non-string payloads serialize to JSON; the return value is the SSE subscriber count.
 
@@ -130,7 +130,7 @@ once. Non-string payloads serialize to JSON; the return value is the SSE subscri
 def create(req)
   post = Post.create(permit(params, {"title": true}))
   # Reaches WS clients in room "posts" AND SSE subscribers of topic "posts".
-  broadcast("posts", { "event": "created", "id": post.id, "title": post.title })
+  Channel.broadcast("posts", { "event": "created", "id": post.id, "title": post.title })
   redirect("/posts/#{post.id}")
 end
 ```
@@ -143,10 +143,10 @@ re-renders itself on writes, prefer [reactive live queries](liveview.md).
 ### Across instances
 
 Subscribers live in the process that accepted them. With more than one `soli serve` instance,
-set `SOLI_REALTIME_BUS=solidb` (or `solikv`) and `broadcast`, `Model.broadcast` and `sse_broadcast` reach the
+set `SOLI_REALTIME_BUS=solidb` (or `solikv`) and `Channel.broadcast`, `Model.broadcast` and `Channel.sse_broadcast` reach the
 subscribers of every instance (and a job in `soli worker` reaches them too) — see
 [Running more than one instance](websockets.md#running-more-than-one-instance). The count they
-return stays this process's, and so does `sse_subscribers`. `broadcast(channel, payload,
+return stays this process's, and so does `Channel.subscribers`. `Channel.broadcast(channel, payload,
 {"local": true})` keeps one message home. `HTTP.stream_to` topics are not carried by the bus:
 a stream belongs to the request that started it, and its token rate would put every delta
 on the bus.
@@ -162,7 +162,7 @@ on the bus.
 **Pick the path by lifetime, not by feature.** A `sse` / `stream` block holds one worker thread
 until it finishes, so it fits finite, active streams — an agent run, an export — and the pool
 should be sized for how many run at once. For many long-lived, mostly-idle connections, use
-`sse_subscribe` / `sse_broadcast`, which are async and hold no worker per connection.
+`Channel.subscribe` / `Channel.sse_broadcast`, which are async and hold no worker per connection.
 
 Backpressure is automatic either way: a slow client pauses a block, and for a broadcast a full
 client drops that message but keeps its subscription.

@@ -11,7 +11,7 @@
     </p>
 
     <h2 id="enabling" class="text-3xl font-bold text-white mb-4 scroll-mt-24">One line in your layout</h2>
-    <pre class="mb-6"><code class="language-erb text-sm">&lt;% user_id = session_get("user_id") %&gt;
+    <pre class="mb-6"><code class="language-erb text-sm">&lt;% user_id = Session.get("user_id") %&gt;
 &lt;%- native_channel("user:#{str(user_id)}") rescue "" unless user_id.nil? %&gt;</code></pre>
     <p class="text-gray-400 mb-12">
         That emits a <code class="text-cyan-400">&lt;meta name="soli-native"&gt;</code> tag naming the channel this page listens to. Its presence is what switches the bridge on &mdash; a page that never calls it downloads no script and opens no connection.
@@ -121,7 +121,7 @@ end</code></pre>
 
     <h2 id="channels" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Channel names and their tokens</h2>
     <p class="text-gray-400 mb-4">
-        Channels are yours to choose: <code class="text-cyan-400">user:42</code>, <code class="text-cyan-400">room:7</code>, <code class="text-cyan-400">deploy:prod</code>. They may not contain <code class="text-cyan-400">.</code>, <code class="text-cyan-400">|</code> or control characters, and are namespaced internally so they can never collide with &mdash; or be reached through &mdash; an app's own <code class="text-cyan-400">sse_broadcast</code> topics.
+        Channels are yours to choose: <code class="text-cyan-400">user:42</code>, <code class="text-cyan-400">room:7</code>, <code class="text-cyan-400">deploy:prod</code>. They may not contain <code class="text-cyan-400">.</code>, <code class="text-cyan-400">|</code> or control characters, and are namespaced internally so they can never collide with &mdash; or be reached through &mdash; an app's own <code class="text-cyan-400">Channel.sse_broadcast</code> topics.
     </p>
     <p class="text-gray-400 mb-4">
         The channel travels as a <strong class="text-white">signed token</strong>, not as plain text. Subscribing is a <code class="text-cyan-400">GET</code> the browser makes, so an unsigned <code class="text-cyan-400">?channel=user:42</code> would let anyone listen to anyone. The token is keyed by HKDF-SHA256 from <code class="text-cyan-400">SOLI_SESSION_SECRET</code>, carries a 12-hour expiry, and is verified before any subscription is accepted. Rotating the secret invalidates outstanding tokens.

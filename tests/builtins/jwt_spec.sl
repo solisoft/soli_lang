@@ -26,7 +26,10 @@ describe("JWT") do
     end
 
     test("puts a kid in the header") do
-      token = jwt_sign({"sub": "a"}, SECRET, {"expires_in": 60, "kid": "k1"})
+      token = jwt_sign({"sub": "a"}, SECRET, {
+        "expires_in": 60,
+        "kid": "k1"
+      })
       assert_eq(token.split(".")[0], KID_HEADER)
     end
 
@@ -43,13 +46,19 @@ describe("JWT") do
 
     test("an exp in the payload raises and names the option") do
       assert_raises("jwt_sign() takes `exp` from the options, not the payload") do
-        jwt_sign({"sub": "a", "exp": 1000}, SECRET)
+        jwt_sign(
+          {"sub": "a", "exp": 1000},
+          SECRET
+        )
       end
     end
 
     test("an iat in the payload raises and names the option") do
       assert_raises("jwt_sign() takes `iat` from the options, not the payload") do
-        jwt_sign({"sub": "a", "iat": 1000}, SECRET)
+        jwt_sign(
+          {"sub": "a", "iat": 1000},
+          SECRET
+        )
       end
     end
 
@@ -73,7 +82,10 @@ describe("JWT") do
 
     test("refuses exp and expires_in together") do
       assert_raises("accepts either `exp` (absolute timestamp) or `expires_in`") do
-        jwt_sign({"sub": "a"}, SECRET, {"exp": 4102444800, "expires_in": 60})
+        jwt_sign({"sub": "a"}, SECRET, {
+          "exp": 4102444800,
+          "expires_in": 60
+        })
       end
     end
 
@@ -98,7 +110,11 @@ describe("JWT") do
 
   context("jwt_verify") do
     test("returns the claims of a valid token") do
-      token = jwt_sign({"sub": "alice", "role": "admin", "tags": ["x"]}, SECRET, {"expires_in": 3600, "jti": "id-1"})
+      token = jwt_sign({
+        "sub": "alice",
+        "role": "admin",
+        "tags": ["x"]
+      }, SECRET, {"expires_in": 3600, "jti": "id-1"})
       claims = jwt_verify(token, SECRET)
       assert_eq(claims["sub"], "alice")
       assert_eq(claims["role"], "admin")
@@ -108,12 +124,18 @@ describe("JWT") do
     end
 
     test("checks an explicit algorithm") do
-      token = jwt_sign({"sub": "bob"}, SECRET, {"expires_in": 3600, "algorithm": "HS512"})
+      token = jwt_sign({"sub": "bob"}, SECRET, {
+        "expires_in": 3600,
+        "algorithm": "HS512"
+      })
       assert_eq(jwt_verify(token, SECRET, {"algorithm": "HS512"})["sub"], "bob")
     end
 
     test("raises when the token's algorithm is not the expected one") do
-      token = jwt_sign({"sub": "alice"}, SECRET, {"expires_in": 3600, "algorithm": "HS256"})
+      token = jwt_sign({"sub": "alice"}, SECRET, {
+        "expires_in": 3600,
+        "algorithm": "HS256"
+      })
       assert_raises("token algorithm HS256 does not match expected (HS512)") do
         jwt_verify(token, SECRET, {"algorithm": "HS512"})
       end
@@ -121,38 +143,66 @@ describe("JWT") do
 
     test("reports a tampered signature") do
       token = jwt_sign({"sub": "alice"}, SECRET, {"expires_in": 3600})
-      assert_eq(jwt_verify(token + "x", SECRET), {"error": true, "message": "InvalidSignature"})
+      assert_eq(
+        jwt_verify(token + "x", SECRET),
+        {"error": true, "message": "InvalidSignature"}
+      )
     end
 
     test("reports a token signed with another secret") do
       token = jwt_sign({"sub": "alice"}, SECRET, {"expires_in": 3600})
-      assert_eq(jwt_verify(token, OTHER_SECRET), {"error": true, "message": "InvalidSignature"})
+      assert_eq(
+        jwt_verify(token, OTHER_SECRET),
+        {"error": true, "message": "InvalidSignature"}
+      )
     end
 
     test("requires an exp claim") do
       token = jwt_sign({"sub": "a"}, SECRET)
-      assert_eq(jwt_verify(token, SECRET), {"error": true, "message": "Missing required claim: exp"})
+      assert_eq(
+        jwt_verify(token, SECRET),
+        {"error": true, "message": "Missing required claim: exp"}
+      )
     end
 
     test("reports an expired token") do
       token = jwt_sign({"sub": "a"}, SECRET, {"expires_in": -120})
-      assert_eq(jwt_verify(token, SECRET), {"error": true, "message": "ExpiredSignature"})
+      assert_eq(
+        jwt_verify(token, SECRET),
+        {"error": true, "message": "ExpiredSignature"}
+      )
     end
 
     test("tolerates a recently expired token within the default leeway, but not with leeway 0") do
       token = jwt_sign({"sub": "a"}, SECRET, {"expires_in": -30})
       assert_eq(jwt_verify(token, SECRET)["sub"], "a")
-      assert_eq(jwt_verify(token, SECRET, {"leeway": 0}), {"error": true, "message": "ExpiredSignature"})
+      assert_eq(
+        jwt_verify(token, SECRET, {"leeway": 0}),
+        {"error": true, "message": "ExpiredSignature"}
+      )
     end
 
     test("reports a token that is not valid yet") do
-      token = jwt_sign({"sub": "a"}, SECRET, {"expires_in": 60, "nbf": 4102444800})
-      assert_eq(jwt_verify(token, SECRET), {"error": true, "message": "ImmatureSignature"})
+      token = jwt_sign({"sub": "a"}, SECRET, {
+        "expires_in": 60,
+        "nbf": 4102444800
+      })
+      assert_eq(
+        jwt_verify(token, SECRET),
+        {"error": true, "message": "ImmatureSignature"}
+      )
     end
 
     test("checks audience, issuer and subject") do
-      token = jwt_sign({"sub": "a"}, SECRET, {"expires_in": 60, "aud": "api", "iss": "me"})
-      claims = jwt_verify(token, SECRET, {"audience": "api", "issuer": "me"})
+      token = jwt_sign({"sub": "a"}, SECRET, {
+        "expires_in": 60,
+        "aud": "api",
+        "iss": "me"
+      })
+      claims = jwt_verify(token, SECRET, {
+        "audience": "api",
+        "issuer": "me"
+      })
       assert_eq(claims["aud"], "api")
       assert_eq(claims["iss"], "me")
       assert_eq(jwt_verify(token, SECRET, {"audience": "other"})["message"], "InvalidAudience")
@@ -200,7 +250,10 @@ describe("JWT") do
       assert(header.includes?("\"alg\":\"ES256\""))
       assert(header.includes?("\"kid\":\"ABC123\""))
 
-      claims = jwt_verify(token, "", {"algorithm": "ES256", "key": public_key})
+      claims = jwt_verify(token, "", {
+        "algorithm": "ES256",
+        "key": public_key
+      })
       assert_eq(claims["sub"], "com.example.app")
       assert_eq(claims["iss"], "TEAMID")
     end
@@ -208,11 +261,22 @@ describe("JWT") do
     test("another algorithm, or a key that is not P-256, is refused") do
       private_key = File.read("tests/fixtures/oauth/apple_test_key.p8")
       public_key = File.read("tests/fixtures/oauth/apple_test_key.pub")
-      token = jwt_sign({"sub": "x"}, "", {"algorithm": "ES256", "key": private_key, "expires_in": 600})
-      refused = jwt_verify(token, "", {"algorithm": "RS256", "key": public_key}) rescue {"error": true}
+      token = jwt_sign({"sub": "x"}, "", {
+        "algorithm": "ES256",
+        "key": private_key,
+        "expires_in": 600
+      })
+      refused = jwt_verify(token, "", {
+        "algorithm": "RS256",
+        "key": public_key
+      }) rescue {"error": true}
       assert_eq(refused["error"], true)
       assert_raises("ES256 requires a valid P-256 private key") do
-        jwt_sign({"sub": "x"}, "", {"algorithm": "ES256", "key": "not a key", "expires_in": 600})
+        jwt_sign({"sub": "x"}, "", {
+          "algorithm": "ES256",
+          "key": "not a key",
+          "expires_in": 600
+        })
       end
     end
   end
@@ -225,13 +289,43 @@ describe("JWT") do
     end
 
     test("jwt_decode_unsafe reports a malformed token") do
-      assert_eq(jwt_decode_unsafe("not-a-token"), {"error": true, "message": "InvalidToken"})
+      assert_eq(
+        jwt_decode_unsafe("not-a-token"),
+        {"error": true, "message": "InvalidToken"}
+      )
     end
 
     test("jwt_decode is removed (SEC-029)") do
       assert_raises("jwt_decode() has been removed (SEC-029)") do
         jwt_decode("any.token.value")
       end
+    end
+  end
+
+  context("the JWT class") do
+    test("JWT.sign matches jwt_sign and names itself in errors") do
+      options = {"iat": 1700000000, "exp": 1700003600}
+      assert_eq(JWT.sign({"sub": "alice"}, SECRET, options), jwt_sign({"sub": "alice"}, SECRET, options))
+      assert_raises("JWT.sign() takes `exp` from the options, not the payload") do
+        JWT.sign(
+          {"sub": "a", "exp": 1000},
+          SECRET
+        )
+      end
+    end
+
+    test("JWT.verify reads a token JWT.sign wrote") do
+      token = JWT.sign({"sub": "ada"}, SECRET, {
+        "iat": 1700000000,
+        "exp": 4102444800
+      })
+      assert_eq(JWT.verify(token, SECRET)["sub"], "ada")
+    end
+
+    test("JWT.decode_unsafe flags the claims unverified") do
+      result = JWT.decode_unsafe(JWT.sign({"sub": "ada"}, SECRET, {"expires_in": 60}))
+      assert_eq(result["unverified"], true)
+      assert_eq(result["claims"]["sub"], "ada")
     end
   end
 end

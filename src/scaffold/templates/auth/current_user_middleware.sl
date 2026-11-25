@@ -11,7 +11,7 @@
 # order: 5
 
 def load_current_user(req)
-  user_id = session_get("user_id")
+  user_id = Session.get("user_id")
   unless user_id.blank?
     user = User.find_by("_key", user_id) rescue nil
     # Sessions opened before the last password reset are refused.
@@ -20,31 +20,31 @@ def load_current_user(req)
     # delete them; each session instead carries the `session_version` it was
     # opened at. Without this an attacker who was already signed in survived the
     # victim's password reset, which defeats the one thing a reset is for.
-    if !user.nil? && session_get("session_version").to_i < user.current_session_version
-      session_destroy()
+    if !user.nil? && Session.get("session_version").to_i < user.current_session_version
+      Session.destroy
       return {"continue": true, "request": req}
     end
     # A sign-in that came with an end (SAML: the identity provider's
     # SessionNotOnOrAfter, or SAML_SESSION_TTL) ends here too, so a user
     # removed at the identity provider is out once it passes.
-    expires_at = session_get("sign_in_expires_at")
+    expires_at = Session.get("sign_in_expires_at")
     if !expires_at.nil? && DateTime.utc.to_unix >= expires_at.to_i
-      session_destroy()
+      Session.destroy
       return {"continue": true, "request": req}
     end
     # An impersonation (`soli generate auth --impersonation`) lasts while
     # the administrator behind it is still one, still holds the sessions it
     # was started from (a password reset, a demotion or a revocation ends it
     # here), and for AUTH_IMPERSONATION_SECONDS at most.
-    admin_id = session_get("impersonator_id").to_s
+    admin_id = Session.get("impersonator_id").to_s
     if admin_id.present?
       admin = User.find_by("_key", admin_id) rescue nil
-      started_at = (session_get("impersonation_started_at") ?? 0).to_i
+      started_at = (Session.get("impersonation_started_at") ?? 0).to_i
       over = admin.nil? || !admin.admin? ||
-        (session_get("impersonator_version") ?? -1).to_i != admin.current_session_version ||
+        (Session.get("impersonator_version") ?? -1).to_i != admin.current_session_version ||
         DateTime.utc.to_unix - started_at > AUTH_IMPERSONATION_SECONDS
       if over
-        session_destroy()
+        Session.destroy
         return {"continue": true, "request": req}
       end
     end
@@ -69,7 +69,7 @@ def load_current_user(req)
     if allowed && user.remembered_by?(parts[1])
       auth_open_session(user)
       # No `auth_time`: nobody signed in just now.
-      session_delete("auth_time")
+      Session.delete("auth_time")
       req["current_user"] = user
       # Used once: replaced now, for whatever is left of its lifetime. When
       # another request of this browser replaced it first, that one's cookie
@@ -77,7 +77,7 @@ def load_current_user(req)
       replacement = user.remember_current?(parts[1]) ? user.rotate_remember_me : nil
       unless replacement.nil?
         left = AUTH_REMEMBER_DAYS * 86400 - (DateTime.utc.to_unix - (user.remember_created_at ?? 0).to_i)
-        set_cookie("remember_token", "#{user._key}:#{replacement}", {
+        Cookie.set("remember_token", "#{user._key}:#{replacement}", {
           "max_age": left > 60 ? left : 60,
           "http_only": true,
           "same_site": "Lax",

@@ -194,17 +194,17 @@ pub fn print_oidc_success_message() {
     println!();
     println!("  \x1b[1mEdits to files the generator did not create\x1b[0m — make them yourself:");
     println!();
-    println!("    \x1b[2m# every sign-in path, next to session_set(\"user_id\", …): sessions#create,\x1b[0m");
+    println!("    \x1b[2m# every sign-in path, next to Session.set(\"user_id\", …): sessions#create,\x1b[0m");
     println!("    \x1b[2m# the two-factor check, passkey sign-in, magic link (OAuth: already done)\x1b[0m");
-    println!("    \x1b[32msession_set(\"auth_time\", DateTime.utc.to_unix)\x1b[0m");
+    println!("    \x1b[32mSession.set(\"auth_time\", DateTime.utc.to_unix)\x1b[0m");
     println!("    \x1b[2m# impersonation start and stop:\x1b[0m");
-    println!("    \x1b[32msession_delete(\"auth_time\")\x1b[0m");
+    println!("    \x1b[32mSession.delete(\"auth_time\")\x1b[0m");
     println!();
     println!(
         "    \x1b[2m# in sessions#create, replace the final `return redirect(\"/\")` with:\x1b[0m"
     );
-    println!("    \x1b[32mdestination = session_get(\"oidc_return_to\") ?? \"/\"\x1b[0m");
-    println!("    \x1b[32msession_delete(\"oidc_return_to\")\x1b[0m");
+    println!("    \x1b[32mdestination = Session.get(\"oidc_return_to\") ?? \"/\"\x1b[0m");
+    println!("    \x1b[32mSession.delete(\"oidc_return_to\")\x1b[0m");
     println!("    \x1b[32mreturn redirect(destination)\x1b[0m");
     println!();
     println!("  Without the first, id_tokens carry no `auth_time` and `max_age` requests");

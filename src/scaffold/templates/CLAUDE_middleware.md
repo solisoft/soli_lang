@@ -185,7 +185,7 @@ middleware("authenticate", -> {
 # scope_only: true
 
 def authenticate(req)
-  user_id = session_get("user_id")
+  user_id = Session.get("user_id")
   return redirect("/login") if user_id.nil?
 
   req["current_user"] = User.find_by("id", user_id)

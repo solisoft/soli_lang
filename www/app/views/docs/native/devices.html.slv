@@ -30,7 +30,7 @@ soli db:migrate up</code></pre>
 
     <h2 id="layout" class="text-3xl font-bold text-white mb-4 scroll-mt-24">Layout</h2>
     <pre class="mb-12"><code class="language-erb text-sm">&lt;%- csrf_meta_tag() %&gt;
-&lt;% user_id = session_get("user_id") %&gt;
+&lt;% user_id = Session.get("user_id") %&gt;
 &lt;%- native_channel("user:#{str(user_id)}") rescue "" unless user_id.nil? %&gt;</code></pre>
 
     <h2 id="http" class="text-3xl font-bold text-white mb-4 scroll-mt-24">HTTP contract</h2>

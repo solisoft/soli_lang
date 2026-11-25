@@ -41,7 +41,7 @@ class SamlController < Controller
     # There is no single logout: this session would outlive the user's
     # removal at the identity provider. It ends at the identity provider's
     # SessionNotOnOrAfter, or after SAML_SESSION_TTL, whichever comes first.
-    session_set("sign_in_expires_at", SamlSso.session_expires_at(result["assertion"]))
+    Session.set("sign_in_expires_at", SamlSso.session_expires_at(result["assertion"]))
     redirect(@_local_path(result["return_to"]))
   end
 

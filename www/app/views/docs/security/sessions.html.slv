@@ -8,6 +8,8 @@
         </h1>
         <p class="text-xl text-gray-400 max-w-2xl leading-relaxed">
             Stateful authentication and data persistence using secure, HttpOnly cookies with pluggable storage backends.
+            <code class="text-emerald-400">Session.get</code> / <code class="text-emerald-400">Session.set</code> / <code class="text-emerald-400">Session.flash</code> are the class; <code class="text-emerald-400">session_get</code> and the other free functions still run and warn once per process.
+            <code class="text-emerald-400">Cookie.signed</code> and <code class="text-emerald-400">Cookie.encrypted</code> read with one argument and write with two or three. The <code class="text-emerald-400">cookies</code> hash is unchanged.
         </p>
     </div>
 
@@ -60,10 +62,10 @@
             <h3 class="text-lg font-semibold text-white mb-3">Configuration Methods</h3>
             <p class="text-gray-400 mb-4">Sessions can be configured via code, environment variables, or config files:</p>
             <pre data-filename="Runtime Configuration"><code class="language-soli text-sm"># Change storage backend at runtime
-session_configure({"driver": "solidb", "solidb_host": "db.example.com"})
+Session.configure({"driver": "solidb", "solidb_host": "db.example.com"})
 
 # Encrypted client-side sessions (no session database)
-session_configure({"driver": "cookie", "secret": getenv("SOLI_SESSION_SECRET")})</code></pre>
+Session.configure({"driver": "cookie", "secret": getenv("SOLI_SESSION_SECRET")})</code></pre>
             <pre data-filename="Environment Variables"><code class="language-bash text-sm">export SOLI_SESSION_DRIVER=solidb
 export SOLI_SOLIDB_HOST=db.example.com
 
@@ -83,9 +85,9 @@ export SOLI_SESSION_SECRET=$(openssl rand -hex 32)   # 32+ chars, keep stable</c
             </p>
             <ul class="space-y-2 text-gray-400 text-sm list-disc list-inside">
                 <li><strong class="text-white">~4KB ceiling</strong> — browsers cap cookies at 4096 bytes. An oversized session refuses to seal (loud log line, previous cookie kept). Store identifiers, not records.</li>
-                <li><strong class="text-white">No server-side revocation</strong> — <code class="text-emerald-400">session_destroy()</code> overwrites the client's copy, but a stolen cookie stays valid until its TTL passes. Rotating the secret invalidates every outstanding session at once.</li>
+                <li><strong class="text-white">No server-side revocation</strong> — <code class="text-emerald-400">Session.destroy</code> overwrites the client's copy, but a stolen cookie stays valid until its TTL passes. Rotating the secret invalidates every outstanding session at once.</li>
                 <li><strong class="text-white">TTL counts from the last write</strong> — expiry uses a timestamp sealed inside the payload, refreshed on each write.</li>
-                <li><strong class="text-white">Absolute lifetime</strong> — however active, a session expires <code class="text-emerald-400">SOLI_SESSION_MAX_LIFETIME</code> seconds after it was issued (default 2592000 = 30 days; <code class="text-emerald-400">0</code> disables), so a stolen cookie cannot be kept alive forever. <code class="text-emerald-400">session_regenerate()</code> restarts the clock; a cookie issued before this existed counts from its <code class="text-emerald-400">iat</code>.</li>
+                <li><strong class="text-white">Absolute lifetime</strong> — however active, a session expires <code class="text-emerald-400">SOLI_SESSION_MAX_LIFETIME</code> seconds after it was issued (default 2592000 = 30 days; <code class="text-emerald-400">0</code> disables), so a stolen cookie cannot be kept alive forever. <code class="text-emerald-400">Session.regenerate</code> restarts the clock; a cookie issued before this existed counts from its <code class="text-emerald-400">iat</code>.</li>
             </ul>
             <p class="text-gray-400 mt-4 text-sm">
                 Need instant logout-everywhere or sessions bigger than a cookie? Use a server-side driver
@@ -99,9 +101,9 @@ export SOLI_SESSION_SECRET=$(openssl rand -hex 32)   # 32+ chars, keep stable</c
         <h2 class="text-2xl font-bold text-white mb-6">Lifetime and Logout, Every Driver</h2>
         <ul class="list-disc pl-6 space-y-3 text-gray-400 mb-4">
             <li><strong class="text-white">The TTL counts from the last use.</strong> <code class="text-emerald-400">SOLI_SESSION_TTL</code> is idle time: a write refreshes the session, and so does a read once a quarter of the TTL has passed (through 2.39.0 the server-side drivers refreshed on writes only).</li>
-            <li><strong class="text-white">An absolute lifetime.</strong> <code class="text-emerald-400">SOLI_SESSION_MAX_LIFETIME</code> (seconds, default 30 days, <code class="text-emerald-400">0</code> = none) caps a session's age from its creation on every driver; through 2.39.0 only the cookie driver had it, so a server-side session (or a stolen id) kept busy never expired. <code class="text-emerald-400">session_regenerate()</code> starts a new lifetime.</li>
-            <li><strong class="text-white"><code class="text-emerald-400">session_destroy()</code> starts an empty session.</strong> The old one is deleted, the request carries on with a fresh id and the response sets the cookie to it, so a <code class="text-emerald-400">flash</code> after the destroy is kept.</li>
-            <li><strong class="text-white">A logout stays a logout.</strong> On <code class="text-emerald-400">disk</code>, <code class="text-emerald-400">solidb</code> and <code class="text-emerald-400">solikv</code>, a write in flight during <code class="text-emerald-400">session_destroy()</code> or <code class="text-emerald-400">session_regenerate()</code> could save the session back after the delete, <code>user_id</code> included. Each step now holds the id's lock, and a write whose session is gone does nothing. The locks are per process.</li>
+            <li><strong class="text-white">An absolute lifetime.</strong> <code class="text-emerald-400">SOLI_SESSION_MAX_LIFETIME</code> (seconds, default 30 days, <code class="text-emerald-400">0</code> = none) caps a session's age from its creation on every driver; through 2.39.0 only the cookie driver had it, so a server-side session (or a stolen id) kept busy never expired. <code class="text-emerald-400">Session.regenerate</code> starts a new lifetime.</li>
+            <li><strong class="text-white"><code class="text-emerald-400">Session.destroy</code> starts an empty session.</strong> The old one is deleted, the request carries on with a fresh id and the response sets the cookie to it, so a <code class="text-emerald-400">flash</code> after the destroy is kept.</li>
+            <li><strong class="text-white">A logout stays a logout.</strong> On <code class="text-emerald-400">disk</code>, <code class="text-emerald-400">solidb</code> and <code class="text-emerald-400">solikv</code>, a write in flight during <code class="text-emerald-400">Session.destroy</code> or <code class="text-emerald-400">Session.regenerate</code> could save the session back after the delete, <code>user_id</code> included. Each step now holds the id's lock, and a write whose session is gone does nothing. The locks are per process.</li>
             <li><strong class="text-white">Expired sessions are swept</strong> on <code class="text-emerald-400">disk</code> and <code class="text-emerald-400">solidb</code>, at most once a minute from session creation; through 2.39.0 the sweep never ran on a server.</li>
             <li><strong class="text-white">Session files are private:</strong> written whole then renamed, <code>0600</code> in a <code>0700</code> directory.</li>
         </ul>
@@ -127,23 +129,23 @@ export SOLI_SESSION_SECRET=$(openssl rand -hex 32)   # 32+ chars, keep stable</c
             </div>
             <div class="p-6 overflow-x-auto">
                 <pre><code class="language-soli text-sm"># 1. Write data to the session
-session_set("user_id", 42)
-session_set("username", "alice_w")
-session_set("role", "admin")
+Session.set("user_id", 42)
+Session.set("username", "alice_w")
+Session.set("role", "admin")
 
 # 2. Read data (returns null if not found)
-current_user = session_get("username")
+current_user = Session.get("username")
 
 # 3. Check if key exists
-if session_has("user_id")
+if Session.has("user_id")
   print("User is authenticated!")
 end
 
 # 4. Remove specific data
-session_delete("flash_message")
+Session.delete("flash_message")
 
 # 5. Clear everything (logout)
-session_destroy()</code></pre>
+Session.destroy</code></pre>
             </div>
         </div>
     </section>
@@ -155,22 +157,22 @@ session_destroy()</code></pre>
             Flash Messages
         </h2>
         <p class="text-gray-400 mb-4">
-            A flash is a message that survives exactly one redirect. <code>flash(type, message)</code> queues it in the session; <code>flashes()</code> in the layout takes it out and shows it once, as an array of <code>{"type", "message"}</code> hashes. <code>flash_now(type, message)</code> is for the render of the current request only &mdash; a form re-rendered with errors &mdash; and never touches the session.
+            A flash is a message that survives exactly one redirect. <code>Session.flash(type, message)</code> queues it in the session; <code>Session.flashes</code> in the layout takes it out and shows it once, as an array of <code>{"type", "message"}</code> hashes. <code>Session.flash_now(type, message)</code> is for the render of the current request only &mdash; a form re-rendered with errors &mdash; and never touches the session.
         </p>
         <pre data-filename="app/controllers/posts_controller.sl"><code class="language-soli text-sm"># POST /posts
 def create(req)
   @post = Post.create(permit(params, {"title": true}))
   return render("posts/new", {}, {"status": 422}) if @post._errors
 
-  flash("success", "Post saved.")
+  Session.flash("success", "Post saved.")
   redirect(post_path(@post))
 end</code></pre>
-        <pre data-filename="app/views/layouts/application.html.slv"><code class="language-erb text-sm">&lt;% flashes().each do |f| %&gt;
+        <pre data-filename="app/views/layouts/application.html.slv"><code class="language-erb text-sm">&lt;% Session.flashes.each do |f| %&gt;
   &lt;div class="flash flash-&lt;%= f.type %&gt;"&gt;&lt;%= f.message %&gt;&lt;/div&gt;
 &lt;% end %&gt;</code></pre>
         <ul class="list-disc pl-6 space-y-2 text-gray-400 mt-4">
-            <li>The first <code>flashes()</code> of a request takes the queue out of the session; later calls answer the same list, so a layout and a partial can both read it. A page with nothing queued costs one session read and no write.</li>
-            <li>A <code>flash</code> set before the request&rsquo;s first <code>flashes()</code> shows in that render; one set after it waits for the next request.</li>
+            <li>The first <code>Session.flashes</code> of a request takes the queue out of the session; later calls answer the same list, so a layout and a partial can both read it. A page with nothing queued costs one session read and no write.</li>
+            <li>A <code>flash</code> set before the request&rsquo;s first <code>Session.flashes</code> shows in that render; one set after it waits for the next request.</li>
             <li>The queue lives under the session key <code>_flashes</code>. An app that defines its own <code>def flash</code> keeps it: the <code>def</code> replaces the builtin. Full reference: <a href="/docs/builtins/session#section-flash" class="text-emerald-400 hover:text-emerald-300">Session functions</a>.</li>
         </ul>
     </section>
@@ -207,9 +209,9 @@ end</code></pre>
 
   if verify_user(credentials)
     # CRITICAL: Regenerate session ID before setting sensitive data
-    session_regenerate
-    session_set("authenticated", true)
-    session_set("user_id", credentials["id"])
+    Session.regenerate
+    Session.set("authenticated", true)
+    Session.set("user_id", credentials["id"])
     return redirect("/dashboard")
   end
 

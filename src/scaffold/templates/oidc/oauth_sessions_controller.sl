@@ -22,7 +22,7 @@ class OauthSessionsController < Controller
       # factor, or whose account could not be read — is ended by the
       # confirmed form all the same: "there is no session" must be true
       # when it is said. (A bare GET ends nothing: see below.)
-      session_destroy() if req["method"] == "POST" && !session_get("user_id").to_s.blank?
+      Session.destroy if req["method"] == "POST" && !Session.get("user_id").to_s.blank?
       return render(
         "oauth/logout_confirm",
         {
@@ -61,13 +61,13 @@ class OauthSessionsController < Controller
     # The token is its owner's to drop, as there: not an administrator's
     # acting as them, nor an API token's.
     current_user()&.forget_me if auth_own_session?(req)
-    set_cookie("remember_token", "", {
+    Cookie.set("remember_token", "", {
       "max_age": 0,
       "http_only": true,
       "same_site": "Lax",
       "secure": true
     })
-    session_destroy()
+    Session.destroy
 
     return redirect_external(destination) unless destination.blank?
 
@@ -90,7 +90,7 @@ class OauthSessionsController < Controller
 
   # The claims of `id_token_hint` when this provider signed it, or nil.
   #
-  # The hint used to be read with `jwt_decode_unsafe`, so anyone could write
+  # The hint used to be read with `JWT.decode_unsafe`, so anyone could write
   # one naming any client and skip the confirmation page. The signature and
   # issuer are checked now; the expiry is not, on purpose: OpenID Connect
   # RP-Initiated Logout §2 lets a relying party send an id_token that has
@@ -104,8 +104,8 @@ class OauthSessionsController < Controller
     for key in [oidc_public_key(), oidc_previous_public_key()]
       next if key.blank?
 
-      # `jwt_verify` raises on a token whose header does not parse.
-      claims = jwt_verify(hint, "", {
+      # `JWT.verify` raises on a token whose header does not parse.
+      claims = JWT.verify(hint, "", {
         "algorithm": "RS256",
         "key": key,
         "issuer": oidc_issuer(),

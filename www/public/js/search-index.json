@@ -2122,13 +2122,14 @@
       ]
     },
     {
-      "title": "jwt_sign",
+      "title": "JWT.sign",
       "type": "function",
       "category": "JWT",
       "path": "/docs/builtins/jwt#def-jwt-sign",
-      "signature": "jwt_sign(payload, secret, options?)",
+      "signature": "JWT.sign(payload, secret, options?)",
       "description": "Create a signed JWT token",
       "keywords": [
+        "jwt_sign",
         "jwt",
         "token",
         "auth",
@@ -2138,13 +2139,14 @@
       ]
     },
     {
-      "title": "jwt_verify",
+      "title": "JWT.verify",
       "type": "function",
       "category": "JWT",
       "path": "/docs/builtins/jwt#def-jwt-verify",
-      "signature": "jwt_verify(token, secret, options?)",
+      "signature": "JWT.verify(token, secret, options?)",
       "description": "Verify and decode a JWT token",
       "keywords": [
+        "jwt_verify",
         "jwt",
         "token",
         "auth",
@@ -2154,13 +2156,14 @@
       ]
     },
     {
-      "title": "jwt_decode",
+      "title": "JWT.decode_unsafe",
       "type": "function",
       "category": "JWT",
-      "path": "/docs/builtins/jwt#def-jwt-decode",
-      "signature": "jwt_decode(token)",
+      "path": "/docs/builtins/jwt#def-jwt-decode-unsafe",
+      "signature": "JWT.decode_unsafe(token)",
       "description": "Decode a JWT without verification",
       "keywords": [
+        "jwt_decode",
         "jwt",
         "token",
         "decode"
@@ -2299,6 +2302,28 @@
         "auth",
         "v4",
         "paserk"
+      ]
+    },
+    {
+      "title": "Bytes, Path and Zip",
+      "type": "page",
+      "category": "Built-in Functions",
+      "path": "/docs/builtins/bytes",
+      "signature": "Bytes.from_base64 / from_string / from_array \u00b7 Path.join / dirname / basename / extname \u00b7 Zip.entries / read / read_text / create",
+      "description": "One binary value with length, slice and base64, UTF-8 and byte-array conversions; lexical slash-separated paths that never touch the disk; list, read and write zip archives in memory, with a cap on what one entry may inflate to.",
+      "keywords": [
+        "bytes",
+        "binary",
+        "base64",
+        "path",
+        "join",
+        "dirname",
+        "basename",
+        "extname",
+        "zip",
+        "archive",
+        "unzip",
+        "compress"
       ]
     },
     {
@@ -5318,13 +5343,14 @@
       ]
     },
     {
-      "title": "ws_join",
+      "title": "Channel.join",
       "type": "function",
       "category": "WebSocket",
       "path": "/docs/core-concepts/websockets#ws_join",
-      "signature": "ws_join(channel)",
+      "signature": "Channel.join(channel)",
       "description": "Join the current WebSocket connection to a channel",
       "keywords": [
+        "ws_join",
         "websocket",
         "ws",
         "join",
@@ -5333,13 +5359,14 @@
       ]
     },
     {
-      "title": "ws_leave",
+      "title": "Channel.leave",
       "type": "function",
       "category": "WebSocket",
       "path": "/docs/core-concepts/websockets#ws_leave",
-      "signature": "ws_leave(channel)",
+      "signature": "Channel.leave(channel)",
       "description": "Leave a channel",
       "keywords": [
+        "ws_leave",
         "websocket",
         "ws",
         "leave",
@@ -5348,13 +5375,14 @@
       ]
     },
     {
-      "title": "ws_clients",
+      "title": "Channel.clients",
       "type": "function",
       "category": "WebSocket",
       "path": "/docs/core-concepts/websockets#ws_clients",
-      "signature": "ws_clients()",
+      "signature": "Channel.clients",
       "description": "Get all connected client IDs",
       "keywords": [
+        "ws_clients",
         "websocket",
         "ws",
         "clients",
@@ -5363,13 +5391,14 @@
       ]
     },
     {
-      "title": "ws_clients_in",
+      "title": "Channel.clients_in",
       "type": "function",
       "category": "WebSocket",
       "path": "/docs/core-concepts/websockets#ws_clients_in",
-      "signature": "ws_clients_in(channel)",
+      "signature": "Channel.clients_in(channel)",
       "description": "Get all client IDs in a specific channel",
       "keywords": [
+        "ws_clients_in",
         "websocket",
         "ws",
         "clients",
@@ -8439,13 +8468,14 @@
       ]
     },
     {
-      "title": "ws_send",
+      "title": "Channel.send",
       "type": "function",
       "category": "WebSocket",
       "path": "/docs/core-concepts/websockets#ws_send",
-      "signature": "ws_send(connection_id, message)",
+      "signature": "Channel.send(connection_id, message)",
       "description": "Send a message to a specific connected client",
       "keywords": [
+        "ws_send",
         "websocket",
         "send",
         "message",
@@ -8453,13 +8483,14 @@
       ]
     },
     {
-      "title": "ws_broadcast",
+      "title": "Channel.broadcast_all",
       "type": "function",
       "category": "WebSocket",
       "path": "/docs/core-concepts/websockets#ws_broadcast",
-      "signature": "ws_broadcast(message)",
+      "signature": "Channel.broadcast_all(message)",
       "description": "Broadcast a message to all connected clients",
       "keywords": [
+        "ws_broadcast",
         "websocket",
         "broadcast",
         "message",
@@ -8467,13 +8498,14 @@
       ]
     },
     {
-      "title": "ws_broadcast_room",
+      "title": "Channel.broadcast_room",
       "type": "function",
       "category": "WebSocket",
       "path": "/docs/core-concepts/websockets#ws_broadcast_room",
-      "signature": "ws_broadcast_room(channel, message)",
+      "signature": "Channel.broadcast_room(channel, message)",
       "description": "Broadcast a message to all clients in a specific channel/room",
       "keywords": [
+        "ws_broadcast_room",
         "websocket",
         "room",
         "channel",
@@ -8482,13 +8514,14 @@
       ]
     },
     {
-      "title": "ws_join",
+      "title": "Channel.join",
       "type": "function",
       "category": "WebSocket",
       "path": "/docs/core-concepts/websockets#ws_join",
-      "signature": "ws_join(channel)",
+      "signature": "Channel.join(channel)",
       "description": "Join a channel/room for targeted messaging",
       "keywords": [
+        "ws_join",
         "websocket",
         "join",
         "room",
@@ -8496,13 +8529,14 @@
       ]
     },
     {
-      "title": "ws_leave",
+      "title": "Channel.leave",
       "type": "function",
       "category": "WebSocket",
       "path": "/docs/core-concepts/websockets#ws_leave",
-      "signature": "ws_leave(channel)",
+      "signature": "Channel.leave(channel)",
       "description": "Leave a channel/room",
       "keywords": [
+        "ws_leave",
         "websocket",
         "leave",
         "room",
@@ -8510,26 +8544,28 @@
       ]
     },
     {
-      "title": "ws_clients",
+      "title": "Channel.clients",
       "type": "function",
       "category": "WebSocket",
       "path": "/docs/core-concepts/websockets#ws_clients",
-      "signature": "ws_clients()",
+      "signature": "Channel.clients",
       "description": "Get list of all connected client IDs",
       "keywords": [
+        "ws_clients",
         "websocket",
         "clients",
         "connections"
       ]
     },
     {
-      "title": "ws_clients_in",
+      "title": "Channel.clients_in",
       "type": "function",
       "category": "WebSocket",
       "path": "/docs/core-concepts/websockets#ws_clients_in",
-      "signature": "ws_clients_in(channel)",
+      "signature": "Channel.clients_in(channel)",
       "description": "Get list of clients connected to a specific channel",
       "keywords": [
+        "ws_clients_in",
         "websocket",
         "clients",
         "room",
@@ -8537,39 +8573,42 @@
       ]
     },
     {
-      "title": "ws_count",
+      "title": "Channel.count",
       "type": "function",
       "category": "WebSocket",
       "path": "/docs/core-concepts/websockets#ws_count",
-      "signature": "ws_count()",
+      "signature": "Channel.count",
       "description": "Get the total number of connected clients",
       "keywords": [
+        "ws_count",
         "websocket",
         "count",
         "connections"
       ]
     },
     {
-      "title": "ws_close",
+      "title": "Channel.close",
       "type": "function",
       "category": "WebSocket",
       "path": "/docs/core-concepts/websockets#ws_close",
-      "signature": "ws_close(connection_id, reason)",
+      "signature": "Channel.close(connection_id, reason)",
       "description": "Close a specific client connection",
       "keywords": [
+        "ws_close",
         "websocket",
         "close",
         "disconnect"
       ]
     },
     {
-      "title": "ws_list_presence",
+      "title": "Channel.list_presence",
       "type": "function",
       "category": "WebSocket",
       "path": "/docs/core-concepts/websockets#ws_list_presence",
-      "signature": "ws_list_presence(channel)",
+      "signature": "Channel.list_presence(channel)",
       "description": "List all user IDs with presence in a channel",
       "keywords": [
+        "ws_list_presence",
         "websocket",
         "presence",
         "users",
@@ -8577,13 +8616,14 @@
       ]
     },
     {
-      "title": "ws_presence_count",
+      "title": "Channel.presence_count",
       "type": "function",
       "category": "WebSocket",
       "path": "/docs/core-concepts/websockets#ws_presence_count",
-      "signature": "ws_presence_count(channel)",
+      "signature": "Channel.presence_count(channel)",
       "description": "Get the number of users with presence in a channel",
       "keywords": [
+        "ws_presence_count",
         "websocket",
         "presence",
         "count",
@@ -8591,13 +8631,14 @@
       ]
     },
     {
-      "title": "ws_get_presence",
+      "title": "Channel.get_presence",
       "type": "function",
       "category": "WebSocket",
       "path": "/docs/core-concepts/websockets#ws_get_presence",
-      "signature": "ws_get_presence(channel, user_id)",
+      "signature": "Channel.get_presence(channel, user_id)",
       "description": "Get presence info for a specific user in a channel",
       "keywords": [
+        "ws_get_presence",
         "websocket",
         "presence",
         "user",
@@ -10558,99 +10599,107 @@
       ]
     },
     {
-      "title": "session_get",
+      "title": "Session.get",
       "type": "function",
       "category": "Session",
       "path": "/docs/builtins/session",
-      "signature": "session_get(key)",
+      "signature": "Session.get(key)",
       "description": "Get a value from the session",
       "keywords": [
+        "session_get",
         "session",
         "get"
       ]
     },
     {
-      "title": "session_set",
+      "title": "Session.set",
       "type": "function",
       "category": "Session",
       "path": "/docs/builtins/session",
-      "signature": "session_set(key, value)",
+      "signature": "Session.set(key, value)",
       "description": "Set a value in the session",
       "keywords": [
+        "session_set",
         "session",
         "set"
       ]
     },
     {
-      "title": "session_delete",
+      "title": "Session.delete",
       "type": "function",
       "category": "Session",
       "path": "/docs/builtins/session",
-      "signature": "session_delete(key)",
+      "signature": "Session.delete(key)",
       "description": "Delete a key from the session",
       "keywords": [
+        "session_delete",
         "session",
         "delete"
       ]
     },
     {
-      "title": "session_destroy",
+      "title": "Session.destroy",
       "type": "function",
       "category": "Session",
       "path": "/docs/builtins/session",
-      "signature": "session_destroy()",
+      "signature": "Session.destroy",
       "description": "Destroy the entire session",
       "keywords": [
+        "session_destroy",
         "session",
         "destroy"
       ]
     },
     {
-      "title": "session_regenerate",
+      "title": "Session.regenerate",
       "type": "function",
       "category": "Session",
       "path": "/docs/builtins/session",
-      "signature": "session_regenerate()",
+      "signature": "Session.regenerate",
       "description": "Regenerate the session ID (security after login)",
       "keywords": [
+        "session_regenerate",
         "session",
         "regenerate",
         "security"
       ]
     },
     {
-      "title": "session_has",
+      "title": "Session.has",
       "type": "function",
       "category": "Session",
       "path": "/docs/builtins/session",
-      "signature": "session_has(key)",
+      "signature": "Session.has(key)",
       "description": "Check if a key exists in the session",
       "keywords": [
+        "session_has",
         "session",
         "has",
         "exists"
       ]
     },
     {
-      "title": "session_id",
+      "title": "Session.id",
       "type": "function",
       "category": "Session",
       "path": "/docs/builtins/session",
-      "signature": "session_id()",
+      "signature": "Session.id",
       "description": "Get the current session ID",
       "keywords": [
+        "session_id",
         "session",
         "id"
       ]
     },
     {
-      "title": "session_configure",
+      "title": "Session.configure",
       "type": "function",
       "category": "Session",
       "path": "/docs/builtins/session",
-      "signature": "session_configure(options)",
+      "signature": "Session.configure(options)",
       "description": "Configure session storage at runtime (driver, secret, path, solidb_*, solikv_*)",
       "keywords": [
+        "session_configure",
         "session",
         "configure",
         "driver",
@@ -10659,13 +10708,14 @@
       ]
     },
     {
-      "title": "session_driver",
+      "title": "Session.driver",
       "type": "function",
       "category": "Session",
       "path": "/docs/builtins/session",
-      "signature": "session_driver()",
+      "signature": "Session.driver",
       "description": "Get the current session storage driver name",
       "keywords": [
+        "session_driver",
         "session",
         "driver",
         "storage"
@@ -10702,13 +10752,14 @@
       ]
     },
     {
-      "title": "set_cookie",
+      "title": "Cookie.set",
       "type": "function",
       "category": "Controllers",
       "path": "/docs/controllers#",
-      "signature": "set_cookie(name, value, options?)",
+      "signature": "Cookie.set(name, value, options?)",
       "description": "Set a response cookie; options control attributes (max_age, http_only, ...) and signed/encrypted sealing",
       "keywords": [
+        "set_cookie",
         "cookie",
         "set",
         "response",
@@ -10718,13 +10769,14 @@
       ]
     },
     {
-      "title": "read_cookie",
+      "title": "Cookie.read",
       "type": "function",
       "category": "Controllers",
       "path": "/docs/controllers#",
-      "signature": "read_cookie(name, options?)",
+      "signature": "Cookie.read(name, options?)",
       "description": "Read a cookie back, verifying/decrypting signed or encrypted values; invalid seals read as nil",
       "keywords": [
+        "read_cookie",
         "cookie",
         "read",
         "signed",
@@ -13215,13 +13267,14 @@
       ]
     },
     {
-      "title": "sse_subscribe",
+      "title": "Channel.subscribe",
       "type": "function",
       "category": "Core Concepts",
       "path": "/docs/core-concepts/streaming#section-pubsub",
-      "signature": "sse_subscribe(req, topic)",
+      "signature": "Channel.subscribe(req, topic)",
       "description": "Open a long-lived SSE connection subscribed to a topic. Async \u2014 does not hold a worker thread, so one worker serves thousands of subscribers. Events arrive via sse_broadcast.",
       "keywords": [
+        "sse_subscribe",
         "sse_subscribe",
         "pub/sub",
         "pubsub",
@@ -13234,13 +13287,14 @@
       ]
     },
     {
-      "title": "sse_broadcast",
+      "title": "Channel.sse_broadcast",
       "type": "function",
       "category": "Core Concepts",
       "path": "/docs/core-concepts/streaming#section-pubsub",
-      "signature": "sse_broadcast(topic, data, event?)",
+      "signature": "Channel.sse_broadcast(topic, data, event?)",
       "description": "Push an SSE event to every live subscriber of a topic, from any controller, job, or callback. Returns the number of clients reached; prunes disconnected ones.",
       "keywords": [
+        "sse_broadcast",
         "sse_broadcast",
         "broadcast",
         "pub/sub",
@@ -13268,13 +13322,14 @@
       ]
     },
     {
-      "title": "pdf_render",
+      "title": "PDF.render",
       "type": "function",
       "category": "PDF",
       "path": "/docs/builtins/pdf#def-pdf-render",
-      "signature": "pdf_render(template, data, options?)",
+      "signature": "PDF.render(template, data, options?)",
       "description": "Render a PDF from a JSON layout template and a JSON data document, in-process (no headless browser). Returns the PDF as a base64 string.",
       "keywords": [
+        "pdf_render",
         "pdf",
         "render",
         "generate",
@@ -13286,13 +13341,14 @@
       ]
     },
     {
-      "title": "pdf_facturx",
+      "title": "PDF.facturx",
       "type": "function",
       "category": "PDF",
       "path": "/docs/builtins/pdf#def-pdf-facturx",
-      "signature": "pdf_facturx(template, data, xml, options?)",
+      "signature": "PDF.facturx(template, data, xml, options?)",
       "description": "Render a PDF/A-3b Factur-X (EN 16931) electronic invoice, embedding the caller-provided Cross-Industry-Invoice (CII) XML. Returns base64.",
       "keywords": [
+        "pdf_facturx",
         "pdf",
         "facturx",
         "factur-x",
@@ -13306,13 +13362,14 @@
       ]
     },
     {
-      "title": "pdf_facturx_from_invoice",
+      "title": "PDF.facturx_from_invoice",
       "type": "function",
       "category": "PDF",
       "path": "/docs/builtins/pdf#def-pdf-facturx-from-invoice",
-      "signature": "pdf_facturx_from_invoice(template, invoice, options?)",
+      "signature": "PDF.facturx_from_invoice(template, invoice, options?)",
       "description": "Render a Factur-X PDF/A-3b from a typed invoice document \u2014 generates the CII XML and computes totals and the VAT breakdown from the line items.",
       "keywords": [
+        "pdf_facturx_from_invoice",
         "pdf",
         "facturx",
         "factur-x",
@@ -13327,13 +13384,14 @@
       ]
     },
     {
-      "title": "pdf_from_markdown",
+      "title": "PDF.from_markdown",
       "type": "function",
       "category": "PDF",
       "path": "/docs/builtins/pdf#def-pdf-from-markdown",
-      "signature": "pdf_from_markdown(markdown, options?)",
+      "signature": "PDF.from_markdown(markdown, options?)",
       "description": "Render a designed PDF straight from a Markdown string \u2014 headings, lists, tables, code, blockquotes and links map onto the layout engine. Returns base64.",
       "keywords": [
+        "pdf_from_markdown",
         "pdf",
         "markdown",
         "md",
@@ -13344,13 +13402,14 @@
       ]
     },
     {
-      "title": "pdf_fill",
+      "title": "PDF.fill",
       "type": "function",
       "category": "PDF",
       "path": "/docs/builtins/pdf#def-pdf-fill",
-      "signature": "pdf_fill(pdf, data, options?)",
+      "signature": "PDF.fill(pdf, data, options?)",
       "description": "Fill an existing PDF's AcroForm fields (text, checkboxes, radios) from a data hash; optionally flatten to bake the values in and lock the fields. Returns base64.",
       "keywords": [
+        "pdf_fill",
         "pdf",
         "form",
         "acroform",
@@ -13362,13 +13421,14 @@
       ]
     },
     {
-      "title": "pdf_merge",
+      "title": "PDF.merge",
       "type": "function",
       "category": "PDF",
       "path": "/docs/builtins/pdf#def-pdf-manipulate",
-      "signature": "pdf_merge(pdfs)",
+      "signature": "PDF.merge(pdfs)",
       "description": "Merge several PDFs (each a path or base64 bytes) into one document, in order. Returns base64.",
       "keywords": [
+        "pdf_merge",
         "pdf",
         "merge",
         "combine",
@@ -13378,13 +13438,14 @@
       ]
     },
     {
-      "title": "pdf_pages",
+      "title": "PDF.pages",
       "type": "function",
       "category": "PDF",
       "path": "/docs/builtins/pdf#def-pdf-manipulate",
-      "signature": "pdf_pages(pdf, selection)",
+      "signature": "PDF.pages(pdf, selection)",
       "description": "Keep a subset of pages from a PDF \u2014 a range string like \"1-3,7\" or an array [1,3,7] (1-based). Returns base64.",
       "keywords": [
+        "pdf_pages",
         "pdf",
         "pages",
         "split",
@@ -13395,13 +13456,14 @@
       ]
     },
     {
-      "title": "pdf_stamp",
+      "title": "PDF.stamp",
       "type": "function",
       "category": "PDF",
       "path": "/docs/builtins/pdf#def-pdf-manipulate",
-      "signature": "pdf_stamp(pdf, text, options?)",
+      "signature": "PDF.stamp(pdf, text, options?)",
       "description": "Stamp text \u2014 a label or diagonal watermark (DRAFT, PAID, CONFIDENTIAL) \u2014 onto an existing PDF's pages. Returns base64.",
       "keywords": [
+        "pdf_stamp",
         "pdf",
         "stamp",
         "watermark",
@@ -13413,13 +13475,14 @@
       ]
     },
     {
-      "title": "pdf_extract_facturx",
+      "title": "PDF.extract_facturx",
       "type": "function",
       "category": "PDF",
       "path": "/docs/builtins/pdf#def-pdf-read-einvoice",
-      "signature": "pdf_extract_facturx(pdf)",
+      "signature": "PDF.extract_facturx(pdf)",
       "description": "Read the embedded Factur-X / ZUGFeRD / XRechnung invoice XML out of a received PDF. Returns the XML string, or null when there is none.",
       "keywords": [
+        "pdf_extract_facturx",
         "pdf",
         "facturx",
         "factur-x",
@@ -13433,13 +13496,14 @@
       ]
     },
     {
-      "title": "pdf_attachments",
+      "title": "PDF.attachments",
       "type": "function",
       "category": "PDF",
       "path": "/docs/builtins/pdf#def-pdf-read-einvoice",
-      "signature": "pdf_attachments(pdf)",
+      "signature": "PDF.attachments(pdf)",
       "description": "List every embedded file in a PDF as { name, mime, size, base64 }. Reads the EmbeddedFiles name tree, falling back to AF.",
       "keywords": [
+        "pdf_attachments",
         "pdf",
         "attachments",
         "embedded files",
@@ -13449,13 +13513,14 @@
       ]
     },
     {
-      "title": "pdf_text",
+      "title": "PDF.text",
       "type": "function",
       "category": "PDF",
       "path": "/docs/builtins/pdf#def-pdf-text",
-      "signature": "pdf_text(pdf, options?)",
+      "signature": "PDF.text(pdf, options?)",
       "description": "Extract the text of a PDF in reading order, as one string (pages separated by a form feed) or one string per page; select pages with a range or an array.",
       "keywords": [
+        "pdf_text",
         "pdf",
         "text",
         "extract",
@@ -13467,13 +13532,14 @@
       ]
     },
     {
-      "title": "pdf_sign",
+      "title": "PDF.sign",
       "type": "function",
       "category": "PDF",
       "path": "/docs/builtins/pdf#def-pdf-sign-verify",
-      "signature": "pdf_sign(pdf, options)",
+      "signature": "PDF.sign(pdf, options)",
       "description": "Digitally sign an existing PDF (path or base64) with a PAdES CMS signature \u2014 the standalone sibling of the sign render option. Options: cert, key, chain, reason, tsa, appearance. Returns base64.",
       "keywords": [
+        "pdf_sign",
         "pdf",
         "sign",
         "signature",
@@ -13485,13 +13551,14 @@
       ]
     },
     {
-      "title": "pdf_verify",
+      "title": "PDF.verify",
       "type": "function",
       "category": "PDF",
       "path": "/docs/builtins/pdf#def-pdf-sign-verify",
-      "signature": "pdf_verify(pdf)",
+      "signature": "PDF.verify(pdf)",
       "description": "Verify the digital signatures in a PDF. Returns an array of { field, valid, covers_document, signer, reason, signed_at } \u2014 valid means the CMS verifies and the ByteRange digest matches (authentic + unmodified).",
       "keywords": [
+        "pdf_verify",
         "pdf",
         "verify",
         "signature",
@@ -13627,13 +13694,14 @@
       ]
     },
     {
-      "title": "pdf_response",
+      "title": "PDF.response",
       "type": "function",
       "category": "PDF",
       "path": "/docs/builtins/pdf#def-pdf-response",
-      "signature": "pdf_response(template, data, options?)",
+      "signature": "PDF.response(template, data, options?)",
       "description": "Render a PDF and return a ready application/pdf HTTP response (binary body via body_base64) straight from a controller.",
       "keywords": [
+        "pdf_response",
         "pdf",
         "response",
         "download",
@@ -13643,13 +13711,14 @@
       ]
     },
     {
-      "title": "pdf_preview",
+      "title": "PDF.preview",
       "type": "function",
       "category": "PDF",
       "path": "/docs/builtins/pdf#def-pdf-preview",
-      "signature": "pdf_preview(template, data, options?)",
+      "signature": "PDF.preview(template, data, options?)",
       "description": "Rasterise a PDF template to one base64 PNG per page - thumbnails and previews in-process, no poppler. With out_dir, writes the files and returns their paths.",
       "keywords": [
+        "pdf_preview",
         "pdf",
         "preview",
         "thumbnail",
@@ -13661,13 +13730,14 @@
       ]
     },
     {
-      "title": "pdf_preview_from_markdown",
+      "title": "PDF.preview_from_markdown",
       "type": "function",
       "category": "PDF",
       "path": "/docs/builtins/pdf#def-pdf-preview-markdown",
-      "signature": "pdf_preview_from_markdown(markdown, options?)",
+      "signature": "PDF.preview_from_markdown(markdown, options?)",
       "description": "Rasterise a Markdown document to one base64 PNG per page - the preview counterpart of pdf_from_markdown.",
       "keywords": [
+        "pdf_preview_from_markdown",
         "pdf",
         "preview",
         "markdown",
@@ -13677,13 +13747,14 @@
       ]
     },
     {
-      "title": "pdf_preview_response",
+      "title": "PDF.preview_response",
       "type": "function",
       "category": "PDF",
       "path": "/docs/builtins/pdf#def-pdf-preview-response",
-      "signature": "pdf_preview_response(template, data, options?)",
+      "signature": "PDF.preview_response(template, data, options?)",
       "description": "Render one page as a ready image/png HTTP response (binary body via body_base64) - the preview mirror of pdf_response.",
       "keywords": [
+        "pdf_preview_response",
         "pdf",
         "preview",
         "response",
@@ -14559,13 +14630,14 @@
       ]
     },
     {
-      "title": "flash",
+      "title": "Session.flash",
       "type": "function",
       "category": "Session",
       "path": "/docs/builtins/session#fn-flash",
-      "signature": "flash(type, message)",
+      "signature": "Session.flash(type, message)",
       "description": "Queue a flash message for the next request (survives one redirect)",
       "keywords": [
+        "flash",
         "flash",
         "notice",
         "message",
@@ -14574,13 +14646,14 @@
       ]
     },
     {
-      "title": "flash_now",
+      "title": "Session.flash_now",
       "type": "function",
       "category": "Session",
       "path": "/docs/builtins/session#fn-flash-now",
-      "signature": "flash_now(type, message)",
+      "signature": "Session.flash_now(type, message)",
       "description": "A flash message for this request's render only",
       "keywords": [
+        "flash_now",
         "flash",
         "now",
         "notice",
@@ -14589,13 +14662,14 @@
       ]
     },
     {
-      "title": "flashes",
+      "title": "Session.flashes",
       "type": "function",
       "category": "Session",
       "path": "/docs/builtins/session#fn-flashes",
-      "signature": "flashes()",
+      "signature": "Session.flashes",
       "description": "The flash messages to show now, as {type, message} hashes; takes the queue out of the session",
       "keywords": [
+        "flashes",
         "flash",
         "flashes",
         "notice",
@@ -15320,13 +15394,14 @@
       ]
     },
     {
-      "title": "broadcast",
+      "title": "Channel.broadcast",
       "type": "function",
       "category": "Core",
       "path": "/docs/core-concepts/streaming#section-broadcast",
-      "signature": "broadcast(channel, payload)",
+      "signature": "Channel.broadcast(channel, payload)",
       "description": "Fan a payload out to every WebSocket connection in a channel and every SSE subscriber of the topic of the same name; returns the SSE subscriber count.",
       "keywords": [
+        "broadcast",
         "broadcast",
         "pubsub",
         "pub/sub",
@@ -15704,13 +15779,14 @@
       ]
     },
     {
-      "title": "pdf_layout_map",
+      "title": "PDF.layout_map",
       "type": "function",
       "category": "PDF",
       "path": "/docs/builtins/pdf#pdf_layout_map",
-      "signature": "pdf_layout_map(template, data, options?) -> Array",
+      "signature": "PDF.layout_map(template, data, options?) -> Array",
       "description": "Lay out a template and report where every element landed (path, kind, page, x, y, w, h) without producing a PDF \u2014 what a visual editor needs to hit-test the rendered page.",
       "keywords": [
+        "pdf_layout_map",
         "pdf_layout_map",
         "layout map",
         "element box",

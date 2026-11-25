@@ -59,7 +59,7 @@ truth; the client only queues until flush succeeds.
 
 ### Auth
 
-Both endpoints require `session_get("user_id")`. Unauthenticated flushes get
+Both endpoints require `Session.get("user_id")`. Unauthenticated flushes get
 `401`. Pair with your login flow the same way as
 [device registration](/docs/native/devices).
 

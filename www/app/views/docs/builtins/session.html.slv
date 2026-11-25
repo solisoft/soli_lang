@@ -13,6 +13,8 @@
         </h1>
         <p class="text-xl text-gray-300 leading-8">
             Server-side session management with pluggable storage backends.
+            The calls on this page are <code class="text-amber-400">Session.get</code>, <code class="text-amber-400">Session.set</code>, <code class="text-amber-400">Session.flash</code> and <code class="text-amber-400">Session.configure</code>. <code class="text-amber-400">session_get</code> and the other free functions still run, and each warns once per process.
+            <code class="text-amber-400">Cookie.signed(name)</code> reads a signed cookie; <code class="text-amber-400">Cookie.signed(name, value, options?)</code> writes one. <code class="text-amber-400">Cookie.encrypted</code> is the encrypted pair. <code class="text-amber-400">set_cookie</code> and <code class="text-amber-400">read_cookie</code> still run and warn once.
         </p>
     </div>
 
@@ -78,24 +80,24 @@
         <section id="def-session-configure" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-session-configure" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-amber-400">session_configure(options)</code>
+                    <code class="text-lg font-mono text-amber-400">Session.configure(options)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
                 <p class="text-gray-400 mb-3">Configure session storage at runtime. Supports <code class="text-orange-400">driver</code>, <code class="text-orange-400">path</code>, <code class="text-orange-400">secret</code>, <code class="text-orange-400">solidb_*</code>, and <code class="text-orange-400">solikv_*</code> options.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Examples</h4>
-                <pre data-filename="Disk Storage"><code class="language-soli text-sm">session_configure({"driver": "disk", "path": "./sessions"})</code></pre>
-                <pre data-filename="SolidB Storage"><code class="language-soli text-sm">session_configure({"driver": "solidb", "solidb_host": "localhost:8080", "solidb_database": "myapp"})</code></pre>
-                <pre data-filename="SoliKV Storage"><code class="language-soli text-sm">session_configure({"driver": "solikv", "solikv_host": "localhost", "solikv_port": 6380})</code></pre>
-                <pre data-filename="Encrypted Cookie Storage"><code class="language-soli text-sm">session_configure({"driver": "cookie", "secret": getenv("SOLI_SESSION_SECRET")})</code></pre>
+                <pre data-filename="Disk Storage"><code class="language-soli text-sm">Session.configure({"driver": "disk", "path": "./sessions"})</code></pre>
+                <pre data-filename="SolidB Storage"><code class="language-soli text-sm">Session.configure({"driver": "solidb", "solidb_host": "localhost:8080", "solidb_database": "myapp"})</code></pre>
+                <pre data-filename="SoliKV Storage"><code class="language-soli text-sm">Session.configure({"driver": "solikv", "solikv_host": "localhost", "solikv_port": 6380})</code></pre>
+                <pre data-filename="Encrypted Cookie Storage"><code class="language-soli text-sm">Session.configure({"driver": "cookie", "secret": getenv("SOLI_SESSION_SECRET")})</code></pre>
             </div>
         </section>
 
         <section id="def-session-driver" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-session-driver" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-amber-400">session_driver()</code>
+                    <code class="text-lg font-mono text-amber-400">Session.driver</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
@@ -105,7 +107,7 @@
                 <div class="text-sm text-gray-400">
                     <code class="text-orange-400">String</code> - One of: <code class="text-amber-400">"in_memory"</code>, <code class="text-amber-400">"disk"</code>, <code class="text-amber-400">"solidb"</code>, <code class="text-amber-400">"solikv"</code>, <code class="text-amber-400">"cookie"</code>
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">current = session_driver()
+                <pre data-filename="Example"><code class="language-soli text-sm">current = Session.driver
 print("Using: " + current)</code></pre>
             </div>
         </section>
@@ -113,7 +115,7 @@ print("Using: " + current)</code></pre>
         <section id="def-session-config" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-session-config" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-amber-400">session_config()</code>
+                    <code class="text-lg font-mono text-amber-400">Session.config</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
@@ -123,7 +125,7 @@ print("Using: " + current)</code></pre>
                 <div class="text-sm text-gray-400">
                     <code class="text-orange-400">Hash</code> - Configuration with driver, path, host, port, ttl, etc.
                 </div>
-                <pre data-filename="Example"><code class="language-soli text-sm">config = session_config()
+                <pre data-filename="Example"><code class="language-soli text-sm">config = Session.config
 print(config["driver"])
 print(config["ttl"])</code></pre>
             </div>
@@ -227,7 +229,7 @@ print(config["ttl"])</code></pre>
                         </tr>
                         <tr class="border-b border-white/5">
                             <td class="py-3 pr-4"><code class="text-amber-400">SOLI_SESSION_MAX_LIFETIME</code></td>
-                            <td class="py-3 pr-4">Absolute lifetime of a <code class="text-orange-400">cookie</code>-driver session (seconds from issue, however active). <code class="text-orange-400">session_regenerate()</code> restarts it; <code class="text-orange-400">0</code> disables</td>
+                            <td class="py-3 pr-4">Absolute lifetime of a <code class="text-orange-400">cookie</code>-driver session (seconds from issue, however active). <code class="text-orange-400">Session.regenerate</code> restarts it; <code class="text-orange-400">0</code> disables</td>
                             <td class="py-3"><code class="text-orange-400">2592000</code></td>
                         </tr>
                         <tr>
@@ -267,19 +269,19 @@ session_id = cookies.session_id</code></pre>
             <section id="fn-http-set-cookie" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#fn-http-set-cookie" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-amber-400">set_cookie(name, value, options?)</code>
+                        <code class="text-lg font-mono text-amber-400">Cookie.set(name, value, options?)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
                     <p class="text-gray-400 text-sm mb-3">Set a response cookie sent as a <code>Set-Cookie</code> header. Without options only <code>Path=/</code> is set. The options hash accepts <code>max_age</code> (seconds; <code>0</code> expires the cookie immediately), <code>expires</code>, <code>http_only</code>, <code>secure</code>, <code>same_site</code> (<code>"Lax"</code>/<code>"Strict"</code>/<code>"None"</code>), <code>path</code>, and <code>domain</code>, plus the <code>signed</code>/<code>encrypted</code> sealing options below. Unknown keys raise so a typo can't silently weaken a cookie.</p>
                     <p class="text-gray-400 text-sm mb-3"><code>Secure</code> is added for you in two cases beyond asking for it: when <code>same_site</code> is <code>"None"</code> (browsers drop such a cookie otherwise, so the alternative is one that silently never arrives), and when the operator has set <code class="text-orange-400">SOLI_FORCE_SECURE_COOKIES=1</code> / called <code>enable_force_secure_cookies()</code> &mdash; that switch covers every cookie the process emits, not just the framework's session cookie.</p>
-                    <pre data-filename="Example"><code class="language-soli text-sm">set_cookie("theme", "dark")
+                    <pre data-filename="Example"><code class="language-soli text-sm">Cookie.set("theme", "dark")
 
 # Persistent remember-me cookie (what `soli generate auth` scaffolds).
 # `secure` is not optional on a 30-day bearer credential: without it, one
 # plaintext request to the same host hands it to anyone on the path.
-set_cookie("remember_token", user["_key"] + ":" + token, {
+Cookie.set("remember_token", user["_key"] + ":" + token, {
   "max_age": 30 * 86400,
   "http_only": true,
   "same_site": "Lax",
@@ -287,7 +289,7 @@ set_cookie("remember_token", user["_key"] + ":" + token, {
 })
 
 # Expire it on logout:
-set_cookie("remember_token", "", {
+Cookie.set("remember_token", "", {
   "max_age": 0,
   "http_only": true,
   "same_site": "Lax",
@@ -304,24 +306,24 @@ set_cookie("remember_token", "", {
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-                    <p class="text-gray-400 text-sm mb-3"><code>{"signed": true}</code> seals the value with HMAC-SHA256 (readable on the client as base64url JSON, but tamper-proof); <code>{"encrypted": true}</code> seals it with AES-256-GCM (opaque). Sealed values accept any JSON-serializable value, not just strings. Both keys are HKDF-derived from <code class="text-orange-400">SOLI_SESSION_SECRET</code> (32+ chars; sealing raises without it), the cookie <strong class="text-white">name</strong> is bound into the seal so values can't be swapped between cookies, and a <code>max_age</code> is embedded as an expiry inside the payload. The two options are mutually exclusive.</p>
-                    <pre data-filename="Example"><code class="language-soli text-sm">set_cookie("prefs", {"theme": "dark"}, {"encrypted": true, "max_age": 86400})
-set_cookie("uid", 42, {"signed": true})</code></pre>
+                    <p class="text-gray-400 text-sm mb-3"><code class="text-orange-400">Cookie.signed</code> seals the value with HMAC-SHA256 (readable on the client as base64url JSON, but tamper-proof); <code class="text-orange-400">Cookie.encrypted</code> seals it with AES-256-GCM (opaque). One argument reads. Two or three write, and the mode is forced on. Two arguments whose second is a hash of cookie options only (<code>Cookie.signed("uid", {"max_age": 60})</code>) raise rather than overwrite the cookie with the options; to store such a hash as the value, pass options too: <code>Cookie.signed(name, value, {})</code>. Sealed values accept any JSON-serializable value, not just strings. Both keys are HKDF-derived from <code class="text-orange-400">SOLI_SESSION_SECRET</code> (32+ chars; sealing raises without it), the cookie <strong class="text-white">name</strong> is bound into the seal so values can't be swapped between cookies, and a <code>max_age</code> is embedded as an expiry inside the payload. The two modes are mutually exclusive. <code class="text-orange-400">Cookie.set(..., {"signed": true})</code> still runs and warns once.</p>
+                    <pre data-filename="Example"><code class="language-soli text-sm">Cookie.encrypted("prefs", {"theme": "dark"}, {"max_age": 86400})
+Cookie.signed("uid", 42)</code></pre>
                 </div>
             </section>
 
             <section id="fn-read-cookie" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#fn-read-cookie" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-amber-400">read_cookie(name, options?)</code>
+                        <code class="text-lg font-mono text-amber-400">Cookie.read(name, options?)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-                    <p class="text-gray-400 text-sm mb-3">Read a cookie back, verifying/decrypting sealed values. The options state the trust requirement: <code>{"signed": true}</code> or <code>{"encrypted": true}</code> returns the decoded value only when it was validly sealed by your server under that name and mode &mdash; tampered, expired, forged (attacker-set bare values) or mode-mismatched cookies all return <code>nil</code>, indistinguishable from an absent cookie. Without options it returns the raw string value (like <code>cookies[name]</code>). Sees cookies written by <code>set_cookie</code> earlier in the same request.</p>
-                    <pre data-filename="Example"><code class="language-soli text-sm">prefs = read_cookie("prefs", {"encrypted": true})   # {"theme": "dark"}
-uid = read_cookie("uid", {"signed": true})          # 42 — verified, not forgeable
-theme = read_cookie("theme")                        # raw string or nil</code></pre>
+                    <p class="text-gray-400 text-sm mb-3">Read a cookie back as the raw string, like <code>cookies[name]</code>. A value you need to trust is <code class="text-orange-400">Cookie.signed(name)</code> or <code class="text-orange-400">Cookie.encrypted(name)</code>: those return the decoded value only when it was validly sealed by your server under that name and mode. Tampered, expired, forged (attacker-set bare values) or mode-mismatched cookies all return <code>nil</code>, indistinguishable from an absent cookie. Sees cookies written by <code>Cookie.set</code> earlier in the same request. <code class="text-orange-400">Cookie.read(name, {"signed": true})</code> still verifies and warns once.</p>
+                    <pre data-filename="Example"><code class="language-soli text-sm">prefs = Cookie.encrypted("prefs")   # {"theme": "dark"}
+uid = Cookie.signed("uid")          # 42 — verified, not forgeable
+theme = Cookie.read("theme")        # raw string or nil</code></pre>
                 </div>
             </section>
 
@@ -353,7 +355,7 @@ token = csrf_token()</code></pre>
             <section id="fn-flash" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#fn-flash" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-amber-400">flash(type, message)</code>
+                        <code class="text-lg font-mono text-amber-400">Session.flash(type, message)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
@@ -364,7 +366,7 @@ def create(req)
   @post = Post.create(permit(params, {"title": true}))
   return render("posts/new", {}, {"status": 422}) if @post._errors
 
-  flash("success", "Post saved.")
+  Session.flash("success", "Post saved.")
   redirect(post_path(@post))
 end</code></pre>
                 </div>
@@ -373,13 +375,13 @@ end</code></pre>
             <section id="fn-flash-now" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#fn-flash-now" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-amber-400">flash_now(type, message)</code>
+                        <code class="text-lg font-mono text-amber-400">Session.flash_now(type, message)</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
                     <p class="text-gray-400 text-sm mb-3">A message for the render of <em>this</em> request only &mdash; the form re-rendered with errors. It never reaches the session, and it keeps the response out of the static-page cache.</p>
-                    <pre data-filename="Example"><code class="language-soli text-sm">flash_now("error", "Fix the errors below.")
+                    <pre data-filename="Example"><code class="language-soli text-sm">Session.flash_now("error", "Fix the errors below.")
 render("posts/new", {}, {"status": 422})</code></pre>
                 </div>
             </section>
@@ -387,14 +389,14 @@ render("posts/new", {}, {"status": 422})</code></pre>
             <section id="fn-flashes" class="scroll-mt-20">
                 <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                     <a href="#fn-flashes" class="group flex items-center gap-2 mb-3">
-                        <code class="text-lg font-mono text-amber-400">flashes()</code>
+                        <code class="text-lg font-mono text-amber-400">Session.flashes</code>
                         <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>
                     </a>
-                    <p class="text-gray-400 text-sm mb-3">The messages to show now: the queued ones, then the <code>flash_now</code> ones, as an array of <code>{"type", "message"}</code> hashes. The first call in a request takes the queue out of the session; every later call in the same request answers the same list, so a layout and a partial can both read it. A request that never calls it leaves the queue for the next one, and a page with nothing queued costs one session read and no write. A <code>flash</code> set before the first <code>flashes()</code> of a request shows in that request&rsquo;s render; one set after it waits for the next request.</p>
+                    <p class="text-gray-400 text-sm mb-3">The messages to show now: the queued ones, then the <code>Session.flash_now</code> ones, as an array of <code>{"type", "message"}</code> hashes. The first call in a request takes the queue out of the session; every later call in the same request answers the same list, so a layout and a partial can both read it. A request that never calls it leaves the queue for the next one, and a page with nothing queued costs one session read and no write. A <code>flash</code> set before the first <code>Session.flashes</code> of a request shows in that request&rsquo;s render; one set after it waits for the next request.</p>
                     <pre data-filename="Example"><code class="language-soli text-sm"># app/views/layouts/application.html.slv
-&lt;% flashes().each do |f| %&gt;
+&lt;% Session.flashes.each do |f| %&gt;
   &lt;div class="flash flash-&lt;%= f.type %&gt;"&gt;&lt;%= f.message %&gt;&lt;/div&gt;
 &lt;% end %&gt;</code></pre>
                 </div>
@@ -415,14 +417,14 @@ def login(email: String, password: String) -> Bool
     return false
   end
 
-  session_set("user_id", user["id"])
-  session_regenerate  # Prevent session fixation
+  Session.set("user_id", user["id"])
+  Session.regenerate  # Prevent session fixation
   true
 end
 
 # Check authentication
 def current_user -> Hash?
-  user_id = session_get("user_id")
+  user_id = Session.get("user_id")
   if !user_id
     return null
   end
@@ -431,7 +433,7 @@ end
 
 # Logout
 def logout
-  session_destroy
+  Session.destroy
 end</code></pre>
         </div>
     </section>

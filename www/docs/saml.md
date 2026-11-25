@@ -224,7 +224,7 @@ what authenticates that request is the signature.
 **With two-factor.** A user who turned on [two-factor](/docs/security/authentication#two-factor)
 is asked for their code after a SAML sign-in too. If the identity provider
 already enforces it, mark the session in `SamlController#acs`:
-`session_set("two_factor", "ok:#{user._key}")`.
+`Session.set("two_factor", "ok:#{user._key}")`.
 
 ## What is verified
 

@@ -66,7 +66,7 @@ class PrivacyController < Controller
     end
 
     Privacy.erase(user)
-    session_destroy()
+    Session.destroy
     redirect("/")
   end
 
@@ -75,7 +75,7 @@ class PrivacyController < Controller
   # The signed-in user, when the request comes from their own session.
   def _person
     return nil unless (req["api_token"] rescue nil).nil?
-    return nil if session_get("impersonator_id").to_s.present?
+    return nil if Session.get("impersonator_id").to_s.present?
 
     current_user()
   end

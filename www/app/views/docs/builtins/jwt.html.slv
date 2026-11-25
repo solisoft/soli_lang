@@ -9,10 +9,12 @@
             <span class="text-white">JWT</span>
         </nav>
         <h1 class="text-4xl font-bold tracking-tight text-white sm:text-5xl mb-6">
-            <span class="bg-gradient-to-r from-orange-400 to-amber-400 bg-clip-text text-transparent">JWT Functions</span>
+            <span class="bg-gradient-to-r from-orange-400 to-amber-400 bg-clip-text text-transparent">JWT</span>
         </h1>
         <p class="text-xl text-gray-300 leading-8">
             Create, verify, and decode JSON Web Tokens for authentication.
+            <code class="text-amber-300">JWT.sign</code>, <code class="text-amber-300">JWT.verify</code> and <code class="text-amber-300">JWT.decode_unsafe</code> are the class.
+            <code class="text-amber-300">jwt_sign</code>, <code class="text-amber-300">jwt_verify</code> and <code class="text-amber-300">jwt_decode_unsafe</code> are the same methods under their old names: they still run, and each warns once per process that it is deprecated.
         </p>
     </div>
 
@@ -30,7 +32,7 @@
         <section id="def-jwt-sign" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-jwt-sign" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-amber-400">jwt_sign(payload, secret, options?)</code>
+                    <code class="text-lg font-mono text-amber-400">JWT.sign(payload, secret, options?)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
@@ -57,13 +59,13 @@
                     <div><code class="text-amber-400">jti</code> : <code class="text-orange-400">String</code> - Unique token ID</div>
                 </div>
                 <p class="text-gray-400 text-sm mt-3">Registered claims come from <code class="text-amber-300">options</code>; everything else in <code class="text-amber-300">payload</code> becomes a custom claim. <code class="text-amber-300">sub</code> is the exception &mdash; it is read from the payload. An option always wins over a same-named payload key. <code class="text-amber-300">exp</code> or <code class="text-amber-300">iat</code> in the payload <strong>raises</strong>, naming the option to use &mdash; they used to be dropped silently.</p>
-                <pre data-filename="HMAC Example"><code class="language-soli text-sm">token = jwt_sign(
+                <pre data-filename="HMAC Example"><code class="language-soli text-sm">token = JWT.sign(
   { "sub": "user123", "role": "admin" },
   getenv("JWT_SECRET"),
   { "expires_in": 3600 }
 )
 # eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...</code></pre>
-                <pre data-filename="RSA Example"><code class="language-soli text-sm">token = jwt_sign(
+                <pre data-filename="RSA Example"><code class="language-soli text-sm">token = JWT.sign(
   { "sub": "user123", "role": "admin" },
   "ignored_for_rsa",  # still required but unused when key is provided
   {
@@ -73,7 +75,7 @@
 )</code></pre>
                 <pre data-filename="OIDC id_token"><code class="language-soli text-sm"># kid lets the relying party find this key in your JWKS, so you can
 # publish two keys and rotate without invalidating live tokens.
-id_token = jwt_sign(
+id_token = JWT.sign(
   { "sub": user["_key"], "email": user["email"] },
   "",
   {
@@ -91,7 +93,7 @@ id_token = jwt_sign(
         <section id="def-jwt-verify" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-jwt-verify" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-amber-400">jwt_verify(token, secret, options?)</code>
+                    <code class="text-lg font-mono text-amber-400">JWT.verify(token, secret, options?)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
@@ -114,10 +116,10 @@ id_token = jwt_sign(
                     <div><code class="text-amber-400">leeway</code> : <code class="text-orange-400">Int</code> - Clock-skew tolerance in seconds, 0 to 31,536,000 (default 60). It also bounds how far in the future <code>iat</code> may be: a token issued later than now + leeway fails with <code>InvalidIssuedAt</code>. More than a year raises: unbounded, a leeway of 10<sup>9</sup> accepted tokens expired decades ago.</div>
                 </div>
                 <p class="text-gray-400 mt-3 text-sm">
-                    Any other option name raises, and so does a value of the wrong type &mdash; <code>{"aud": …}</code> or <code>{"iss": …}</code> (<code>jwt_sign</code>&rsquo;s names) used to be skipped, verifying the token with no audience or issuer check at all; the error now names the option you meant.
+                    Any other option name raises, and so does a value of the wrong type &mdash; <code>{"aud": …}</code> or <code>{"iss": …}</code> (<code>JWT.sign</code>&rsquo;s names) used to be skipped, verifying the token with no audience or issuer check at all; the error now names the option you meant.
                 </p>
                 <p class="text-gray-400 mt-3 text-sm">
-                    Without options, the 2-arg form accepts only HMAC algorithms (<code>HS256</code>/<code>HS384</code>/<code>HS512</code>), matching the back-compat default for existing <code>jwt_verify(token, secret)</code> callers. A <code>secret</code> that is key material &mdash; a PEM, an OpenSSH key, or the bare base64 body of a public key or certificate with its armour stripped &mdash; raises in that form: anyone holding a public key could forge an HMAC token with it. That check is a heuristic, not a guarantee: key material in another encoding (URL-safe base64, hex DER, a JWK) is not recognized, so pass <code>algorithm</code> or <code>key</code> whenever the token is not an HMAC one.
+                    Without options, the 2-arg form accepts only HMAC algorithms (<code>HS256</code>/<code>HS384</code>/<code>HS512</code>), matching the back-compat default for existing <code>JWT.verify(token, secret)</code> callers. A <code>secret</code> that is key material &mdash; a PEM, an OpenSSH key, or the bare base64 body of a public key or certificate with its armour stripped &mdash; raises in that form: anyone holding a public key could forge an HMAC token with it. That check is a heuristic, not a guarantee: key material in another encoding (URL-safe base64, hex DER, a JWK) is not recognized, so pass <code>algorithm</code> or <code>key</code> whenever the token is not an HMAC one.
                 </p>
                 <div class="rounded-xl bg-amber-500/10 border border-amber-500/20 p-4 mt-3">
                     <p class="text-gray-300 text-sm">
@@ -132,7 +134,7 @@ id_token = jwt_sign(
                     <code class="text-orange-400">Hash</code> - The payload if valid, or <code>{ "error": true, "message": String }</code> if invalid
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm"># 2-arg form: HMAC only.
-result = jwt_verify(token, getenv("JWT_SECRET"))
+result = JWT.verify(token, getenv("JWT_SECRET"))
 if has_key(result, "error")
   println("Invalid token: " + result["message"])
 else
@@ -141,10 +143,10 @@ else
 end
 
 # Asymmetric verification: pin the algorithm explicitly.
-result = jwt_verify(token, "", { "algorithm": "RS256", "key": rsa_public_pem })
+result = JWT.verify(token, "", { "algorithm": "RS256", "key": rsa_public_pem })
 
 # Verifying an OIDC id_token: check who issued it and who it was meant for.
-claims = jwt_verify(id_token, "", {
+claims = JWT.verify(id_token, "", {
   "algorithm": "RS256",
   "key": provider_public_pem,
   "issuer": "https://op.example",
@@ -156,13 +158,13 @@ claims = jwt_verify(id_token, "", {
         <section id="def-jwt-decode-unsafe" class="scroll-mt-20 mb-6">
             <div class="rounded-xl bg-white/5 border border-white/10 p-5">
                 <a href="#def-jwt-decode-unsafe" class="group flex items-center gap-2 mb-3">
-                    <code class="text-lg font-mono text-amber-400">jwt_decode_unsafe(token)</code>
+                    <code class="text-lg font-mono text-amber-400">JWT.decode_unsafe(token)</code>
                     <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 text-gray-500 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Decode a JWT <strong>without</strong> verifying signature or expiration. The result is wrapped as <code>{unverified: true, claims: {...}}</code> so it cannot be confused with a verified <code>jwt_verify</code> response. <span class="text-red-400">Never trust these claims for authentication</span> &mdash; use <code>jwt_verify(token, secret)</code> for that.</p>
-                <p class="text-gray-400 mb-3">The previous <code>jwt_decode(token)</code> returned the same shape as <code>jwt_verify</code>, which made <code>claims["sub"]</code> a silent auth bypass. It was removed in SEC-029; calling it raises a migration error.</p>
+                <p class="text-gray-400 mb-3">Decode a JWT <strong>without</strong> verifying signature or expiration. The result is wrapped as <code>{unverified: true, claims: {...}}</code> so it cannot be confused with a verified <code>JWT.verify</code> response. <span class="text-red-400">Never trust these claims for authentication</span> &mdash; use <code>JWT.verify(token, secret)</code> for that.</p>
+                <p class="text-gray-400 mb-3">The previous <code>jwt_decode(token)</code> returned the same shape as <code>JWT.verify</code>, which made <code>claims["sub"]</code> a silent auth bypass. It was removed in SEC-029; calling it raises a migration error.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Parameters</h4>
                 <div class="text-sm text-gray-400">
                     <code class="text-amber-400">token</code> : <code class="text-orange-400">String</code> - The JWT token to decode
@@ -172,7 +174,7 @@ claims = jwt_verify(id_token, "", {
                     <code class="text-orange-400">Hash</code> &mdash; <code>{unverified: true, claims: {...}}</code> on success, <code>{error: true, message: ...}</code> on a malformed token
                 </div>
                 <pre data-filename="Example"><code class="language-soli text-sm"># Inspection only &mdash; DO NOT use for auth
-let result = jwt_decode_unsafe(token)
+let result = JWT.decode_unsafe(token)
 println(result["claims"]["sub"])</code></pre>
             </div>
         </section>
@@ -191,7 +193,7 @@ def login(email: String, password: String) -> Hash
     return { "error": "Invalid credentials" }
   end
 
-  token = jwt_sign(
+  token = JWT.sign(
     { "sub": str(user["id"]), "role": user["role"] },
     getenv("JWT_SECRET"),
     { "expires_in": 86400 }  # 24 hours
@@ -208,7 +210,7 @@ def authenticate(req: Hash) -> Hash?
   end
 
   token = substring(auth_header, 7)
-  result = jwt_verify(token, getenv("JWT_SECRET"))
+  result = JWT.verify(token, getenv("JWT_SECRET"))
 
   if has_key(result, "error")
     return null
