@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.42.2] - 2026-11-26
+
 ### Added
 - **Mail through Cloudflare Email Sending.** `Mailer.configure({"delivery_method": "cloudflare"})` (or `SOLI_MAIL_DELIVERY_METHOD=cloudflare`) sends in a Worker through the `send_email` binding (`binding`, default `EMAIL`; `SOLI_MAIL_BINDING`) by way of a new `soli_email` JSPI import, and anywhere else through the REST API (`account_id` + `api_key` token; `SOLI_MAIL_ACCOUNT_ID`). The mail is mapped to Cloudflare's shape (`replyTo` and `{email, name}` for the binding, `reply_to` and strings for REST); a mail Cloudflare would refuse (no recipient, over 50 recipients or 32 attachments, no from, no body) is refused first, and a refusal names Cloudflare's code with a hint (`E_RECIPIENT_NOT_ALLOWED`: Workers Free sends only to verified destination addresses). Under `--dev` with no account it lands in the dev inbox. The generated `wrangler.toml` (`soli edge build`, `soli new --edge`) carries the `[[send_email]]` block commented out.
 
