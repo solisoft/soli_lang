@@ -513,6 +513,11 @@ fn load_component_classes(
                 .parse()
                 .map_err(|e| format!("Parser error in {}: {}", path.display(), e))?
         };
+        // A class's methods take their file from the interpreter that defines
+        // them. Without it they had none: coverage counted every line of
+        // `app/components/` and attributed no hit to it, so a component the
+        // specs rendered stayed at 0 %.
+        interpreter.set_source_path(path.clone());
         for stmt in &program.statements {
             if let StmtKind::Class(decl) = &stmt.kind {
                 interpreter
@@ -3366,6 +3371,36 @@ mod tests {
 
     fn empty_data() -> Value {
         Value::Hash(Rc::new(RefCell::new(HashPairs::default())))
+    }
+
+    /// Coverage keys a hit by the file of the function that ran: a component's
+    /// methods must carry `app/components/<file>.sl`, as helpers carry theirs.
+    #[test]
+    fn a_component_s_methods_know_their_file() {
+        let app = tempfile::tempdir().unwrap();
+        let components = app.path().join("app/components");
+        std::fs::create_dir_all(&components).unwrap();
+        let file = components.join("badge_component.sl");
+        std::fs::write(
+            &file,
+            "class BadgeComponent\n  new(label)\n    @label = label\n  end\n\n  def render\n    \"<b>#{@label}</b>\"\n  end\nend\n",
+        )
+        .unwrap();
+
+        load_view_helpers(&app.path().join("app/helpers")).unwrap();
+        let class = match get_view_helper("BadgeComponent") {
+            Some(Value::Class(class)) => class,
+            other => panic!("BadgeComponent was not registered: {:?}", other.is_some()),
+        };
+        clear_view_helpers();
+
+        let expected = crate::coverage::coverage_path_key(&file)
+            .to_string_lossy()
+            .to_string();
+        let render = class.methods.borrow().get("render").cloned().unwrap();
+        assert_eq!(render.source_path.as_deref(), Some(expected.as_str()));
+        let constructor = class.constructor.clone().unwrap();
+        assert_eq!(constructor.source_path.as_deref(), Some(expected.as_str()));
     }
 
     /// In production a repeat `public_path` is answered from the URL cache —
