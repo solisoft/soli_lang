@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.42.3] - 2026-11-26
+
 ### Fixed
 - **Component classes count in code coverage.** `soli test` listed every line of `app/components/*.sl` and credited none of them: the classes were loaded with no source file, so a component the specs rendered stayed at 0 %. Its methods now carry their file, and their lines count like a helper's.
 

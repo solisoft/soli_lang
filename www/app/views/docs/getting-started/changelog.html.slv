@@ -20,8 +20,12 @@
 
     <section id="unreleased" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
-        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.42.2.</p>
-        <h3 id="unreleased-fixes" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Fixes</h3>
+        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.42.3.</p>
+    </section>
+
+    <section id="v2-42-3" class="mb-16 scroll-mt-24">
+        <h2 class="text-3xl font-bold text-white mb-4">v2.42.3 <span class="text-gray-500 text-xl font-normal">&mdash; 2026-11-26</span></h2>
+        <h3 id="v2-42-3-fixes" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Fixes</h3>
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
             <li><strong class="text-white">Component classes count in code coverage.</strong> <code class="text-cyan-400">soli test</code> listed the lines of <code class="text-cyan-400">app/components/*.sl</code> without ever crediting them, so a component the specs rendered stayed at 0&nbsp;%. Their lines now count like a helper&rsquo;s (<a href="/docs/testing" class="text-amber-400 hover:underline">Testing</a>).</li>
         </ul>
