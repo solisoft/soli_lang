@@ -3378,7 +3378,7 @@ mod tests {
     #[test]
     fn a_component_s_methods_know_their_file() {
         let app = tempfile::tempdir().unwrap();
-        let components = app.path().join("app/components");
+        let components = app.path().join("app").join("components");
         std::fs::create_dir_all(&components).unwrap();
         let file = components.join("badge_component.sl");
         std::fs::write(
@@ -3387,20 +3387,25 @@ mod tests {
         )
         .unwrap();
 
-        load_view_helpers(&app.path().join("app/helpers")).unwrap();
+        load_view_helpers(&app.path().join("app").join("helpers")).unwrap();
         let class = match get_view_helper("BadgeComponent") {
             Some(Value::Class(class)) => class,
             other => panic!("BadgeComponent was not registered: {:?}", other.is_some()),
         };
         clear_view_helpers();
 
-        let expected = crate::coverage::coverage_path_key(&file)
-            .to_string_lossy()
-            .to_string();
+        // Compared as paths, not strings: Windows takes `/` and `\` alike.
+        let expected = crate::coverage::coverage_path_key(&file);
         let render = class.methods.borrow().get("render").cloned().unwrap();
-        assert_eq!(render.source_path.as_deref(), Some(expected.as_str()));
+        assert_eq!(
+            render.source_path.as_deref().map(Path::new),
+            Some(expected.as_path())
+        );
         let constructor = class.constructor.clone().unwrap();
-        assert_eq!(constructor.source_path.as_deref(), Some(expected.as_str()));
+        assert_eq!(
+            constructor.source_path.as_deref().map(Path::new),
+            Some(expected.as_path())
+        );
     }
 
     /// In production a repeat `public_path` is answered from the URL cache —
