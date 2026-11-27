@@ -20,8 +20,12 @@
 
     <section id="unreleased" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
-        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.43.1.</p>
-        <h3 id="unreleased-orm" class="text-xl font-semibold text-white mb-4 scroll-mt-24">ORM &amp; i18n</h3>
+        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.43.2.</p>
+    </section>
+
+    <section id="v2-43-2" class="mb-16 scroll-mt-24">
+        <h2 class="text-3xl font-bold text-white mb-4">v2.43.2 <span class="text-gray-500 text-xl font-normal">&mdash; 2026-11-27</span></h2>
+        <h3 id="v2-43-2-orm" class="text-xl font-semibold text-white mb-4 scroll-mt-24">ORM &amp; i18n</h3>
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
             <li><strong class="text-white">Translated fields sort as a reader expects.</strong> <code class="text-cyan-400">order_translated</code> compared code points, so French titles came out Abricot, Zèbre, banane, Éclair, école; it now sets case and accents aside (Abricot, banane, Éclair, école, Zèbre), values equal once folded keeping their written order. <code class="text-cyan-400">order("title")</code> on a field the model declares translated now does the same instead of sorting the column the page does not show. SoliDB only, and unindexed (<a href="/docs/core-concepts/i18n#querying-translations" class="text-amber-400 hover:underline">I18n</a>).</li>
             <li><strong class="text-white">A translated field&rsquo;s column holds the default locale&rsquo;s value.</strong> With <code class="text-cyan-400">translate "name"</code>, the column stayed at what <code class="text-cyan-400">create</code> was given while every later write, the default locale&rsquo;s included, went to <code class="text-cyan-400">translated_fields</code>: <code class="text-cyan-400">where({"name": …})</code>, <code class="text-cyan-400">find_by</code>, uniqueness rules and indexes compared a value nobody saw. A write in the default locale now goes to the column (and drops the entry that hid it); a <code class="text-cyan-400">create</code> in another locale also stores that locale&rsquo;s translation, so it is not lost when the column changes. <code class="text-cyan-400">translations</code> lists the default locale from the column, and <code class="text-cyan-400">Model.sync_translated_columns</code> moves the entries written before into the column (<a href="/docs/core-concepts/i18n#translated-model-fields" class="text-amber-400 hover:underline">I18n</a>).</li>

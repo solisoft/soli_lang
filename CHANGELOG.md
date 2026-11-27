@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.43.2] - 2026-11-27
+
 ### Changed
 - **Translated fields sort as a reader expects.** `order_translated(field)` sorts on `LOWER(UNACCENT(reader))` then the reader value (`translated::translated_sort_criteria`), instead of the raw value SoliDB compares by code point ("Zèbre" before "banane", "école" after "zinc"). `order` / `reorder` / `Model.order` on a declared translated field expand to the same criteria (`expand_translated_order`) on SoliDB; SQL keeps sorting the column. A criterion can now be a whole expression (`query::SORT_EXPRESSION_MARK`, rendered by `sort_term` without the `doc.` prefix). No index serves it.
 - **A translated field's column holds the default locale's value.** `translated::stage_translation` writes a value in `i18n::helpers::default_locale()` to the column and drops `translated_fields.{field}.{default}` (rebuilt, never edited in place: the hash may be shared with the dirty-tracking snapshot); other locales are staged as before. `create` / `new` in a non-default locale also stage that locale's translation (`seed_translation`; `create` folds it into the hash it inserts via `register_instance::fold_pending_translations`). `translation(field, default)` and `translations(field)` read the column for the default locale; `missing_translations(default)` checks the column. Before, the column stayed at the `create` value forever and default-locale writes went to `translated_fields`, so `where` / `find_by` / uniqueness on the column compared a stale value. New `Model.sync_translated_columns` (SoliDB) moves existing `translated_fields.{field}.{default}` entries into the column with `MERGE` / `UNSET`, returning the count.
