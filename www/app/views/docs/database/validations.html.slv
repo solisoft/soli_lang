@@ -97,6 +97,10 @@ end</code></pre>
                     <td class="py-3 px-4 text-gray-400">Call a closure &mdash; same return rules as the method form</td>
                 </tr>
                 <tr>
+                    <td class="py-3 px-4"><code class="text-green-300">message: "text"</code> / <code class="text-green-300">message: :key</code></td>
+                    <td class="py-3 px-4 text-gray-400">Replace the rule&rsquo;s message: a sentence, or a translation key (see <a href="/docs/core-concepts/i18n#custom-messages" class="text-amber-400 hover:underline">Validation messages</a>)</td>
+                </tr>
+                <tr>
                     <td class="py-3 px-4"><code class="text-green-300">on: "create" / "update"</code></td>
                     <td class="py-3 px-4 text-gray-400">Only run the rule for that operation</td>
                 </tr>
@@ -250,6 +254,10 @@ else
 end</code></pre>
         </div>
     </div>
+
+    <p class="text-gray-400 mb-6">
+        The messages read in the request&rsquo;s locale: Soli ships them for <code>en</code>, <code>fr</code>, <code>de</code>, <code>es</code>, <code>it</code> and <code>pt</code>, and <code>config/locales/*.yml</code> overrides any of them or adds a language &mdash; see <a href="/docs/core-concepts/i18n#validation-messages" class="text-amber-400 hover:underline">Validation messages</a>. <code>user.full_messages</code> gives each error as a sentence naming its field (<code>["Email can't be blank"]</code>, with the field&rsquo;s translated name when the locale file has one).
+    </p>
 
     <div class="my-4 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 mb-12">
         <p class="text-amber-300 text-sm">

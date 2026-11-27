@@ -6,7 +6,7 @@ use crate::ast::{Expr, ExprKind};
 use crate::error::RuntimeError;
 use crate::interpreter::builtins::model::is_translated_field;
 use crate::interpreter::environment::Environment;
-use crate::interpreter::value::{same_string, HashKey, Value};
+use crate::interpreter::value::{same_string, Value};
 use crate::span::Span;
 
 use std::cell::RefCell;
@@ -1061,20 +1061,15 @@ pub(crate) fn set_instance_field(
     }
     let class_name = inst.borrow().class.name.clone();
     if is_translated_field(&class_name, name) {
-        let mut inst_mut = inst.borrow_mut();
-        let pending = match inst_mut.get("_pending_translations") {
-            Some(Value::Hash(hash)) => hash,
-            _ => {
-                let hash = Rc::new(RefCell::new(crate::interpreter::value::HashPairs::default()));
-                inst_mut
-                    .fields
-                    .insert("_pending_translations".into(), Value::Hash(hash.clone()));
-                hash
-            }
-        };
-        pending
-            .borrow_mut()
-            .insert(HashKey::String(name.to_string().into()), value);
+        // Staged as `_pending_translations.{field}.{locale}`, the locale of
+        // the write — not of the later `save`, which may run in another one.
+        let locale = crate::interpreter::builtins::i18n::helpers::get_locale();
+        crate::interpreter::builtins::model::translated::stage_translation(
+            &mut inst.borrow_mut(),
+            name,
+            &locale,
+            value,
+        );
         return Ok(());
     }
     inst.borrow_mut().set(name.to_string(), value);

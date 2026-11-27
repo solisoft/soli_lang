@@ -1,6 +1,7 @@
 pub mod desktop;
 pub mod edge;
 pub mod eui;
+pub mod i18n;
 pub mod mobile;
 mod progress;
 mod test_runner;

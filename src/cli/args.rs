@@ -261,6 +261,20 @@ pub enum Command {
     DbIndexes {
         folder: String,
     },
+    /// `soli i18n:export <locale> [folder] [--force]` — write Soli's built-in
+    /// validation messages for a locale to `config/locales/soli.<locale>.yml`.
+    I18nExport {
+        locale: String,
+        folder: String,
+        force: bool,
+    },
+    /// `soli i18n:missing <locale> [folder] [--from <locale>]` — the keys a
+    /// locale lacks against the reference one (exit 1 when any).
+    I18nMissing {
+        locale: String,
+        folder: String,
+        from: Option<String>,
+    },
     /// `soli routes [folder]` — print the app's expanded route table
     /// (everything `config/routes.sl` + engines register) without starting
     /// the server.
@@ -827,6 +841,8 @@ pub fn print_usage() {
     eprintln!("  soli db:drop [folder] [--connection NAME] [--tenant KEY]");
     eprintln!("  soli db:indexes [folder]");
     eprintln!("  soli routes [folder] [-g PATTERN] [--json]");
+    eprintln!("  soli i18n:export <locale> [folder] [--force]");
+    eprintln!("  soli i18n:missing <locale> [folder] [--from <locale>]");
     eprintln!("  soli graph build [folder] [--no-embed] [--database NAME] [--dry-run] [--fresh]");
     eprintln!("  soli graph query \"<question>\" [folder] [--json] [--limit N] [--hops N] [--path PREFIX] [--kind KINDS]");
     eprintln!("  soli graph note \"<finding>\" --on NAME[,NAME…] [--question Q] [folder] [--json]");
@@ -937,6 +953,8 @@ pub fn print_usage() {
     eprintln!("  db:migrate           Database migration commands");
     eprintln!("  db:seed              Run database seed scripts (db/seeds.sl, db/seeds/*.sl, or a given file)");
     eprintln!("  routes [folder]      Print the app's route table (-g PATTERN to filter, --json for tooling)");
+    eprintln!("  i18n:export <locale> Write Soli's built-in validation messages to config/locales to edit");
+    eprintln!("  i18n:missing <locale> List the translation keys a locale lacks (exit 1 when any)");
     eprintln!("  graph build [folder] Build a code graph in SolidB for agents (graph RAG); --dry-run for JSON");
     eprintln!("  graph query <q>      Retrieve the code most relevant to a task (semantic + graph); --json for agents, --path PREFIX / --kind KINDS to filter");
     eprintln!("  graph note <text>    Keep a finding about the code (--on NAME…); later queries return it");
@@ -1778,6 +1796,55 @@ pub fn parse_args() -> Options {
                     ".".to_string()
                 };
                 options.command = Command::DbIndexes { folder };
+                return options;
+            }
+            "i18n:export" | "i18n:missing" => {
+                let command = args[i].clone();
+                i += 1;
+                let mut locale: Option<String> = None;
+                let mut folder = ".".to_string();
+                let mut force = false;
+                let mut from: Option<String> = None;
+                while i < args.len() {
+                    match args[i].as_str() {
+                        "--force" if command == "i18n:export" => force = true,
+                        "--from" if command == "i18n:missing" => {
+                            i += 1;
+                            if i >= args.len() {
+                                eprintln!("{command}: --from requires a locale");
+                                process::exit(64);
+                            }
+                            from = Some(args[i].clone());
+                        }
+                        arg if !arg.starts_with('-') && locale.is_none() => {
+                            locale = Some(arg.to_string());
+                        }
+                        arg if !arg.starts_with('-') => folder = arg.to_string(),
+                        other => {
+                            eprintln!("Unknown option for {command}: {other}");
+                            print_usage();
+                            process::exit(64);
+                        }
+                    }
+                    i += 1;
+                }
+                let Some(locale) = locale else {
+                    eprintln!("{command}: which locale? e.g. soli {command} fr");
+                    process::exit(64);
+                };
+                options.command = if command == "i18n:export" {
+                    Command::I18nExport {
+                        locale,
+                        folder,
+                        force,
+                    }
+                } else {
+                    Command::I18nMissing {
+                        locale,
+                        folder,
+                        from,
+                    }
+                };
                 return options;
             }
             "routes" => {

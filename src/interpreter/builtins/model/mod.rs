@@ -290,6 +290,7 @@ mod register_crud;
 mod register_dsl;
 mod register_finders;
 mod register_instance;
+pub(crate) use register_instance::full_messages_of;
 mod register_mutate;
 mod register_search;
 pub(crate) mod registry;
@@ -298,6 +299,7 @@ pub mod rerank;
 pub mod scopes;
 pub mod search;
 pub mod state_machine;
+pub mod translated;
 pub mod uploaders;
 pub mod validation;
 

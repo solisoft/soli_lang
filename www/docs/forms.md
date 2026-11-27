@@ -98,8 +98,13 @@ and are always HTML-escaped.
 | `f.check_box("published")` | checkbox, `value="true"`, checked when the field is `true`/`"true"` |
 | `f.radio_button("size", "xl")` | radio, checked when the field equals the value |
 | `f.select("status", choices)` | `<select>` with the current value `selected` |
-| `f.label("title", text?, opts?)` | `<label for="title">` — text defaults to a humanized field name |
+| `f.label("title", text?, opts?)` | `<label for="title">` — text defaults to the field's translated name (`models.<model>.attributes.title`), else the humanized field name |
 | `f.submit("Save", opts?)` | `<button type="submit">` |
+
+A field of a model's [translated field](i18n.md#translated-model-fields)
+takes `{"locale": "fr"}`: it is named `translated_fields[title][fr]`, gets the
+id `title_fr`, and shows that locale's translation, so one form edits several
+languages.
 
 `select` accepts an array of strings or of `[label, value]` pairs:
 
@@ -177,7 +182,9 @@ in this style.
 When a record failed a `create`/`save`, its `_errors` drive three things:
 
 - `f.error_summary(opts?)` — a `<div class="form-errors"><ul>…` listing every
-  message (renders nothing for a valid record). `{"class": "…"}` restyles it.
+  error as a sentence naming its field, in the request's locale ("Title can't
+  be blank"; an error on `_base` alone), and nothing for a valid record.
+  `{"class": "…"}` restyles it. See [I18n](i18n.md#model-and-attribute-names).
 - `f.errors_for("title")` — inline `<span class="field-error-message">` per
   message on that field.
 - Any field helper for an errored field gains a `field-error` class and

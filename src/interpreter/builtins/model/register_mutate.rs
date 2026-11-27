@@ -190,7 +190,7 @@ pub(super) fn register(native_static_methods: &mut HashMap<String, Rc<NativeFunc
                         let mut out = crate::interpreter::value::HashPairs::default();
                         out.insert(
                             HashKey::String("_errors".into()),
-                            super::register_instance::stale_errors(),
+                            super::register_instance::stale_errors(&class_name),
                         );
                         return Ok(Value::Hash(Rc::new(RefCell::new(out))));
                     }

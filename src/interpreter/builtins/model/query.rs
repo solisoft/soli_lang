@@ -1011,6 +1011,14 @@ impl QueryBuilder {
                 }
                 let word: String = chars[start..i].iter().collect();
 
+                // A later segment of a path (`fr` in `doc.title.fr`) is a
+                // key of what precedes it, never a field of the document:
+                // prefixed, `doc.a.b.c` became `doc.a.b.doc.c`.
+                if start > 0 && chars[start - 1] == '.' {
+                    result.push_str(&word);
+                    continue;
+                }
+
                 // Check if already prefixed with any alias (e.g. doc.field,
                 // rel.field, or edge.field in graph traversals)
                 if i < len && chars[i] == '.' && (word == "doc" || word == "rel" || word == "edge")
@@ -3722,6 +3730,22 @@ mod tests {
 
     fn make_qb(class: &str, collection: &str) -> QueryBuilder {
         QueryBuilder::new(class.to_string(), collection.to_string())
+    }
+
+    #[test]
+    fn a_deep_path_in_a_string_filter_is_not_reprefixed() {
+        assert_eq!(
+            QueryBuilder::prefix_bare_fields("doc.translated_fields.title.fr == @t"),
+            "doc.translated_fields.title.fr == @t"
+        );
+        assert_eq!(
+            QueryBuilder::prefix_bare_fields("doc.a.b.c == @t AND age > 3"),
+            "doc.a.b.c == @t AND doc.age > 3"
+        );
+        assert_eq!(
+            QueryBuilder::prefix_bare_fields_with_alias("rel.meta.tags.x == @t", "rel"),
+            "rel.meta.tags.x == @t"
+        );
     }
 
     #[test]

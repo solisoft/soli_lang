@@ -26,6 +26,29 @@ def __soli_form_names(record)
   {"collection": class_name.downcase + "s", "key": record._key}
 end
 
+# template.rs: a model's translated field name, nil otherwise (no locale
+# files here, so always nil).
+def __soli_human_attribute(record, field)
+  nil
+end
+
+# template.rs: a hash record's translated_fields[field][locale].
+def __soli_translation(record, field, locale)
+  ((record["translated_fields"] ?? {})[field] ?? {})[locale]
+end
+
+# template.rs: each error as "<Field> <message>", a _base error alone.
+def __soli_full_messages(record)
+  (record["_errors"] ?? []).map do |err|
+    field = err["field"].to_s
+    if field == "_base" || field.blank?
+      err["message"].to_s
+    else
+      "#{field.replace("_", " ").capitalize()} #{err["message"]}"
+    end
+  end
+end
+
 import "./_fixtures/form_builder_fixture.sl"
 
 # Model used to exercise form_with's instance-derived URLs
@@ -345,14 +368,16 @@ describe("error rendering") do
     assert_eq(form_for(record).errors_for("title"), "")
   end
 
-  test("error_summary lists every error regardless of field") do
+  test("error_summary lists every error as a sentence naming its field") do
     record = {"title": "", "_errors": [
       {"field": "title", "message": "cannot be blank"},
-      {"field": "body", "message": "too short"}
+      {"field": "body", "message": "too short"},
+      {"field": "_base", "message": "Refused by the server"}
     ]}
     assert_eq(
       form_for(record).error_summary(),
-      "<div class=\"form-errors\"><ul><li>cannot be blank</li><li>too short</li></ul></div>"
+      "<div class=\"form-errors\"><ul><li>Title cannot be blank</li><li>Body too short</li>" +
+        "<li>Refused by the server</li></ul></div>"
     )
   end
 
@@ -522,6 +547,23 @@ describe("builder internals") do
         "<label for=\"title\" class=\"lbl\">Post title</label>"
       )
     end
+  end
+end
+
+describe("per-locale fields of a translated field") do
+  test("locale names translated_fields[field][locale] and prefills that translation") do
+    record = {"title": "Hello", "translated_fields": {"title": {"fr": "Bonjour"}}}
+    form = form_for(record)
+    assert_eq(
+      form.text_field("title", {"locale": "fr"}),
+      "<input type=\"text\" id=\"title_fr\" name=\"translated_fields[title][fr]\" value=\"Bonjour\">"
+    )
+    assert_eq(
+      form.text_field("title", {"locale": "de"}),
+      "<input type=\"text\" id=\"title_de\" name=\"translated_fields[title][de]\">"
+    )
+    assert_eq(form.label("title", "Titre", {"locale": "fr"}), "<label for=\"title_fr\">Titre</label>")
+    assert_contains(form.text_area("title", {"locale": "fr"}), "name=\"translated_fields[title][fr]\"")
   end
 end
 

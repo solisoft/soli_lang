@@ -125,7 +125,7 @@ pub(super) fn register(native_static_methods: &mut HashMap<String, Rc<NativeFunc
                         let instance = Rc::new(RefCell::new(
                             crate::interpreter::value::Instance::new(class.clone()),
                         ));
-                        apply_hash_to_instance(&instance, &data)?;
+                        seed_instance_attributes(&instance, &data)?;
                         let error_values: Vec<Value> = endpoint_errors
                             .into_iter()
                             .map(|(field, message)| {
@@ -163,7 +163,7 @@ pub(super) fn register(native_static_methods: &mut HashMap<String, Rc<NativeFunc
             let instance = Rc::new(RefCell::new(crate::interpreter::value::Instance::new(
                 class.clone(),
             )));
-            apply_hash_to_instance(&instance, &data)?;
+            seed_instance_attributes(&instance, &data)?;
             // `value_field`s as value objects, as a record read back has
             // them — not the hash the caller passed.
             hydrate_value_fields(&class_name, &mut instance.borrow_mut());
@@ -470,6 +470,88 @@ pub(super) fn register(native_static_methods: &mut HashMap<String, Rc<NativeFunc
 
             Ok(Value::QueryBuilder(Rc::new(RefCell::new(qb))))
         })),
+    );
+
+    // Model.where_translated({"title": "Bonjour"}) — compare a translated
+    // field as a reader in the current locale sees it (its translation along
+    // the locale's regional chain, then the column). Other fields compare as
+    // `where` does. SoliDB only, like a string `where`.
+    native_static_methods.insert(
+        "where_translated".to_string(),
+        Rc::new(NativeFunction::new(
+            "Model.where_translated",
+            Some(2),
+            |args| {
+                let class = get_class_rc_from_args(args)?;
+                let Some(Value::Hash(conditions)) = args.get(1) else {
+                    return Err("where_translated() expects a Hash of conditions".to_string());
+                };
+                let (filter, binds) =
+                    super::translated::translated_filter(&class.name, &conditions.borrow(), 0)?;
+                let mut qb = QueryBuilder::new_with_class(
+                    class.name.clone(),
+                    class_name_to_collection(&class.name),
+                    class.clone(),
+                );
+                qb.has_raw_where = true;
+                qb.set_filter(filter, binds);
+                Ok(Value::QueryBuilder(Rc::new(RefCell::new(qb))))
+            },
+        )),
+    );
+
+    // Model.order_translated("title", "desc") — sort by what a reader in the
+    // current locale sees. SoliDB only.
+    native_static_methods.insert(
+        "order_translated".to_string(),
+        Rc::new(NativeFunction::new(
+            "Model.order_translated",
+            None,
+            |args| {
+                let class = get_class_rc_from_args(args)?;
+                let mut qb = QueryBuilder::new_with_class(
+                    class.name.clone(),
+                    class_name_to_collection(&class.name),
+                    class.clone(),
+                );
+                let (field, direction) = super::translated::order_translated_args(&args[1..])?;
+                qb.set_order(
+                    super::translated::translated_order_field(&class.name, &field)?,
+                    direction,
+                );
+                Ok(Value::QueryBuilder(Rc::new(RefCell::new(qb))))
+            },
+        )),
+    );
+
+    // Model.missing_translations("es") — the records that lack a translation
+    // in that locale for at least one translated field. SoliDB only.
+    native_static_methods.insert(
+        "missing_translations".to_string(),
+        Rc::new(NativeFunction::new(
+            "Model.missing_translations",
+            Some(2),
+            |args| {
+                let class = get_class_rc_from_args(args)?;
+                let locale = match args.get(1) {
+                    Some(Value::String(s)) | Some(Value::Symbol(s)) => s.to_string(),
+                    _ => {
+                        return Err(
+                            "missing_translations(locale) expects a locale string".to_string()
+                        )
+                    }
+                };
+                let (filter, binds) = super::translated::missing_filter(&class.name, &locale)?;
+                let mut qb = QueryBuilder::new_with_class(
+                    class.name.clone(),
+                    class_name_to_collection(&class.name),
+                    class.clone(),
+                );
+                qb.has_raw_where = true;
+                qb.set_filter(filter, binds);
+                Ok(Value::QueryBuilder(Rc::new(RefCell::new(qb))))
+            },
+        )),
     );
 
     // Model.live_where(filter) — reactive live query. Behaves exactly like

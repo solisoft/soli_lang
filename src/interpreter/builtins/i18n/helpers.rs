@@ -223,17 +223,367 @@ fn merge_yaml(dst: &mut serde_json::Value, src: serde_json::Value) {
 /// default locale if the active one has no entry. Returns `None` if no
 /// locale resolves or the terminal node is not a string.
 pub fn lookup_translation(locale: &str, key: &str) -> Option<String> {
-    TRANSLATIONS.read(|guard| {
-        let store = guard.as_ref()?;
-        if let Some(s) = lookup_in(store, locale, key) {
-            return Some(s);
+    // Locale by locale along the chain: the application's key, then Soli's
+    // own catalog (validation messages) for what the application did not
+    // write.
+    locale_chain(locale)
+        .into_iter()
+        .find_map(|l| lookup_exact(&l, key).or_else(|| catalog_lookup(&l, key)))
+}
+
+/// The validation messages Soli ships, per locale: `catalog/<locale>.yml`,
+/// embedded in the binary. Kept apart from [`TRANSLATIONS`] on purpose —
+/// merged into it, every application would negotiate `fr`, `de`, … from
+/// `Accept-Language` although it ships none of those languages. An
+/// application's own keys are looked up first, key by key (see
+/// [`error_message`]).
+const CATALOG_SOURCES: &[(&str, &str)] = &[
+    ("en", include_str!("catalog/en.yml")),
+    ("fr", include_str!("catalog/fr.yml")),
+    ("de", include_str!("catalog/de.yml")),
+    ("es", include_str!("catalog/es.yml")),
+    ("it", include_str!("catalog/it.yml")),
+    ("pt", include_str!("catalog/pt.yml")),
+];
+
+static CATALOG: std::sync::LazyLock<HashMap<String, serde_json::Value>> =
+    std::sync::LazyLock::new(|| {
+        let mut catalog = HashMap::new();
+        for (locale, source) in CATALOG_SOURCES {
+            // The files are ours and tested; a parse failure leaves that
+            // locale to the English catalog rather than panicking a worker.
+            if let Some(tree) = soli_yaml::parse(source)
+                .ok()
+                .and_then(|v| v.get(*locale).cloned())
+            {
+                catalog.insert(locale.to_string(), tree);
+            }
         }
-        let fallback = default_locale();
-        if locale != fallback {
-            return lookup_in(store, &fallback, key);
+        catalog
+    });
+
+/// The locales Soli ships validation messages for.
+pub fn builtin_message_locales() -> Vec<&'static str> {
+    CATALOG_SOURCES.iter().map(|(locale, _)| *locale).collect()
+}
+
+/// The YAML Soli ships for `locale`, as written (`soli i18n:export`).
+pub fn builtin_catalog_source(locale: &str) -> Option<&'static str> {
+    CATALOG_SOURCES
+        .iter()
+        .find(|(l, _)| *l == locale)
+        .map(|(_, source)| *source)
+}
+
+/// The tree Soli ships for `locale` (under the locale key).
+pub fn builtin_catalog_tree(locale: &str) -> Option<serde_json::Value> {
+    CATALOG.get(locale).cloned()
+}
+
+/// Every key of a locale tree that holds a string, dotted, with a CLDR plural
+/// suffix (`_one`, `_other`, …) folded away — languages pluralize with
+/// different categories, so `too_short` is one key whatever forms it has.
+pub fn translation_keys(tree: &serde_json::Value) -> std::collections::BTreeSet<String> {
+    fn walk(node: &serde_json::Value, prefix: &str, out: &mut std::collections::BTreeSet<String>) {
+        match node {
+            serde_json::Value::Object(map) => {
+                for (key, child) in map {
+                    let path = if prefix.is_empty() {
+                        key.clone()
+                    } else {
+                        format!("{prefix}.{key}")
+                    };
+                    walk(child, &path, out);
+                }
+            }
+            serde_json::Value::String(_) => {
+                let folded = ["_zero", "_one", "_two", "_few", "_many", "_other"]
+                    .iter()
+                    .find_map(|suffix| prefix.strip_suffix(suffix))
+                    .unwrap_or(prefix);
+                out.insert(folded.to_string());
+            }
+            _ => {}
         }
-        None
-    })
+    }
+    let mut out = std::collections::BTreeSet::new();
+    walk(tree, "", &mut out);
+    out
+}
+
+/// Fallbacks an application declares (`I18n.set_fallbacks({"ca": ["es"]})`):
+/// for a locale, the locales to try right after it. Per application, like
+/// the default locale.
+static FALLBACKS: TenantCell<HashMap<String, Vec<String>>> = TenantCell::new();
+
+/// Declare the fallbacks of each locale, replacing any declared before.
+pub fn set_fallbacks(fallbacks: HashMap<String, Vec<String>>) {
+    FALLBACKS.set(fallbacks);
+}
+
+/// The declared fallbacks.
+pub fn fallbacks() -> HashMap<String, Vec<String>> {
+    FALLBACKS.get().unwrap_or_default()
+}
+
+/// The locales that stand for `locale` itself, in order: the locale, its
+/// declared fallbacks, its base language (`fr-CA` → `fr`), and the base
+/// language's declared fallbacks. What a translated model field reads before
+/// its column — the default locale is not among them, since the column
+/// already holds the record's own language.
+pub fn regional_chain(locale: &str) -> Vec<String> {
+    let declared = fallbacks();
+    let mut chain: Vec<String> = Vec::with_capacity(4);
+    let mut add = |l: &str| {
+        for candidate in
+            std::iter::once(l).chain(declared.get(l).into_iter().flatten().map(String::as_str))
+        {
+            if !candidate.is_empty() && !chain.iter().any(|c| c == candidate) {
+                chain.push(candidate.to_string());
+            }
+        }
+    };
+    add(locale);
+    if let Some((base, _)) = locale.split_once(['-', '_']) {
+        add(base);
+    }
+    chain
+}
+
+/// The locales a lookup for `locale` tries, in order: its
+/// [`regional_chain`], the application's default locale, then English — so a
+/// key nobody translated still reads as a sentence.
+pub fn locale_chain(locale: &str) -> Vec<String> {
+    let mut chain = regional_chain(locale);
+    for l in [default_locale().as_str(), "en"] {
+        if !chain.iter().any(|c| c == l) {
+            chain.push(l.to_string());
+        }
+    }
+    chain
+}
+
+/// A dotted key under one locale's tree.
+fn node_at<'a>(root: &'a serde_json::Value, key: &str) -> Option<&'a serde_json::Value> {
+    let mut node = root;
+    for part in key.split('.') {
+        node = node.as_object()?.get(part)?;
+    }
+    Some(node)
+}
+
+/// `key` in one locale's tree, pluralized by `count` when given: `key_zero`
+/// for 0, the CLDR category of `locale`, `key_other`, then the bare key (an
+/// application may write one sentence for every count).
+fn lookup_counted(
+    root: &serde_json::Value,
+    locale: &str,
+    key: &str,
+    count: Option<i64>,
+) -> Option<String> {
+    let text = |k: &str| {
+        node_at(root, k)
+            .and_then(|n| n.as_str())
+            .map(str::to_string)
+    };
+    if let Some(n) = count {
+        if n == 0 {
+            if let Some(hit) = text(&format!("{key}_zero")) {
+                return Some(hit);
+            }
+        }
+        let category = plural_category(locale, n);
+        if let Some(hit) = text(&format!("{key}{}", category.suffix())) {
+            return Some(hit);
+        }
+        if let Some(hit) = text(&format!("{key}_other")) {
+            return Some(hit);
+        }
+    }
+    text(key)
+}
+
+/// The first of `keys` that resolves, locale by locale along
+/// [`locale_chain`]: in each locale the application's keys (in the order
+/// given) and then the built-in catalog's `catalog_key`, before the next
+/// locale is tried — an application's `fr` wins over Soli's `fr`, and Soli's
+/// `fr` over the application's `en`.
+fn resolve_layered(keys: &[String], catalog_key: &str, count: Option<i64>) -> Option<String> {
+    for locale in locale_chain(&get_locale()) {
+        let app_hit = TRANSLATIONS.read(|guard| {
+            let root = guard.as_ref()?.get(&locale)?;
+            keys.iter()
+                .find_map(|k| lookup_counted(root, &locale, k, count))
+        });
+        if app_hit.is_some() {
+            return app_hit;
+        }
+        if let Some(root) = CATALOG.get(&locale) {
+            if let Some(hit) = lookup_counted(root, &locale, catalog_key, count) {
+                return Some(hit);
+            }
+        }
+    }
+    None
+}
+
+/// `BlogPost` → `blog_post`, `Admin::User` → `admin/user`: the model's
+/// segment in `models.<model>.…` keys.
+pub fn model_key(class_name: &str) -> String {
+    class_name
+        .split("::")
+        .map(|part| {
+            let mut out = String::with_capacity(part.len() + 4);
+            for (i, c) in part.chars().enumerate() {
+                if c.is_uppercase() {
+                    if i > 0 {
+                        out.push('_');
+                    }
+                    out.extend(c.to_lowercase());
+                } else {
+                    out.push(c);
+                }
+            }
+            out
+        })
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
+/// The message for validation error `code` on `field`, in the current
+/// locale, with `params` interpolated (`{count}`, `{type}`, `{class}`).
+///
+/// Looked up, in each locale of the chain: `models.<model>.errors.attributes.
+/// <field>.<code>`, `models.<model>.errors.<code>`, `errors.messages.<code>`
+/// in the application's files, then `errors.messages.<code>` in Soli's
+/// catalog. (`models.<model>.attributes.<field>` is the field's *name*, see
+/// [`human_attribute_name`].) A `count` param pluralizes (`too_short_one` /
+/// `_other`). A `type` param is itself translated through
+/// `errors.types.<type>`. `None` when nothing anywhere names the code — an
+/// application's own symbol it never translated.
+pub fn error_message(
+    model: Option<&str>,
+    field: &str,
+    code: &str,
+    params: &[(String, String)],
+) -> Option<String> {
+    let mut keys = Vec::with_capacity(3);
+    if let Some(model) = model {
+        let model = model_key(model);
+        keys.push(format!("models.{model}.errors.attributes.{field}.{code}"));
+        keys.push(format!("models.{model}.errors.{code}"));
+    }
+    let shared = format!("errors.messages.{code}");
+    keys.push(shared.clone());
+    let count = params
+        .iter()
+        .find(|(k, _)| k == "count")
+        .and_then(|(_, v)| v.parse::<i64>().ok());
+    let template = resolve_layered(&keys, &shared, count)?;
+
+    let values: Vec<(String, String)> = params
+        .iter()
+        .map(|(name, value)| {
+            if name == "type" {
+                let key = format!("errors.types.{value}");
+                let translated = resolve_layered(std::slice::from_ref(&key), &key, None);
+                (name.clone(), translated.unwrap_or_else(|| value.clone()))
+            } else {
+                (name.clone(), value.clone())
+            }
+        })
+        .collect();
+    Some(interpolate(&template, &values))
+}
+
+/// `first_name` → `First name`: a field name read as words, the fallback
+/// when no translation names the field.
+pub fn humanize(name: &str) -> String {
+    let words = name.trim_start_matches('_').replace('_', " ");
+    let mut chars = words.chars();
+    match chars.next() {
+        Some(first) => first.to_uppercase().chain(chars).collect(),
+        None => String::new(),
+    }
+}
+
+/// `BlogPost` → `Blog post`, the fallback name of a model.
+fn humanize_class(class_name: &str) -> String {
+    let last = class_name.rsplit("::").next().unwrap_or(class_name);
+    humanize(&model_key(last))
+}
+
+/// A field's name in the current locale: `models.<model>.attributes.<field>`
+/// from the application's files, along [`locale_chain`]; else the field read
+/// as words (`first_name` → `First name`).
+pub fn human_attribute_name(model: Option<&str>, field: &str) -> String {
+    model
+        .and_then(|model| {
+            let key = format!("models.{}.attributes.{field}", model_key(model));
+            resolve_layered(std::slice::from_ref(&key), &key, None)
+        })
+        .unwrap_or_else(|| humanize(field))
+}
+
+/// A model's name in the current locale: `models.<model>.name`, pluralized
+/// by `count` (`name_one` / `name_other`; no count is the singular); else the
+/// class name read as words.
+pub fn human_model_name(model: &str, count: Option<i64>) -> String {
+    let key = format!("models.{}.name", model_key(model));
+    resolve_layered(std::slice::from_ref(&key), &key, Some(count.unwrap_or(1)))
+        .unwrap_or_else(|| humanize_class(model))
+}
+
+/// An error as a sentence that names its field: `errors.format`
+/// (`"{attribute} {message}"` in every shipped locale) with the field's
+/// [`human_attribute_name`]. A `_base` error is its message alone.
+pub fn full_message(model: Option<&str>, field: &str, message: &str) -> String {
+    if field == "_base" || field.is_empty() {
+        return message.to_string();
+    }
+    let format = resolve_layered(&["errors.format".to_string()], "errors.format", None)
+        .unwrap_or_else(|| "{attribute} {message}".to_string());
+    interpolate(
+        &format,
+        &[
+            ("attribute".to_string(), human_attribute_name(model, field)),
+            ("message".to_string(), message.to_string()),
+        ],
+    )
+}
+
+/// A formatting setting from the application's locale files
+/// (`number.separator`, `date.format`, …) for `locale`, along its
+/// [`regional_chain`] only: a format is a locale's own convention, so it is
+/// never borrowed from the default locale or English.
+pub fn locale_setting(locale: &str, key: &str) -> Option<String> {
+    regional_chain(locale)
+        .into_iter()
+        .find_map(|l| lookup_exact(&l, key))
+}
+
+/// `1234567` with `delimiter` every three digits: `1.234.567`.
+pub fn group_digits(digits: &str, delimiter: &str) -> String {
+    let (sign, digits) = match digits.strip_prefix('-') {
+        Some(rest) => ("-", rest),
+        None => ("", digits),
+    };
+    let chars: Vec<char> = digits.chars().collect();
+    let mut out = String::with_capacity(digits.len() + digits.len() / 3 * delimiter.len());
+    for (i, c) in chars.iter().enumerate() {
+        if i > 0 && (chars.len() - i).is_multiple_of(3) {
+            out.push_str(delimiter);
+        }
+        out.push(*c);
+    }
+    format!("{sign}{out}")
+}
+
+/// `key` in Soli's own catalog, for `I18n.translate` when the application
+/// has no such key: `t("errors.messages.blank")` reads the built-in text.
+fn catalog_lookup(locale: &str, key: &str) -> Option<String> {
+    let root = CATALOG.get(locale)?;
+    node_at(root, key)?.as_str().map(str::to_string)
 }
 
 /// A CLDR plural category. Which ones a language uses is the language's
@@ -358,32 +708,23 @@ pub fn plural_category(locale: &str, n: i64) -> PluralCategory {
 /// zero category, so `items_zero` was looked up, missed in `fr.yml`, and the
 /// English string was served in its place.
 pub fn lookup_plural(locale: &str, key: &str, n: i64) -> Option<String> {
-    if n == 0 {
-        if let Some(hit) = lookup_exact(locale, &format!("{key}_zero")) {
-            return Some(hit);
-        }
-    }
-    let category = plural_category(locale, n);
-    if let Some(hit) = lookup_exact(locale, &format!("{}{}", key, category.suffix())) {
-        return Some(hit);
-    }
-    if category != PluralCategory::Other {
-        if let Some(hit) = lookup_exact(locale, &format!("{key}_other")) {
-            return Some(hit);
-        }
-    }
-    // Nothing in the active locale: the default locale answers, by its own
-    // rules — its categories are not this locale's.
-    let fallback = default_locale();
-    if locale != fallback {
-        let category = plural_category(&fallback, n);
+    // Each locale of the chain answers by its own rules — a fallback's
+    // categories are not the active locale's.
+    for l in locale_chain(locale) {
         if n == 0 {
-            if let Some(hit) = lookup_exact(&fallback, &format!("{key}_zero")) {
+            if let Some(hit) = lookup_exact(&l, &format!("{key}_zero")) {
                 return Some(hit);
             }
         }
-        return lookup_exact(&fallback, &format!("{}{}", key, category.suffix()))
-            .or_else(|| lookup_exact(&fallback, &format!("{key}_other")));
+        let category = plural_category(&l, n);
+        if let Some(hit) = lookup_exact(&l, &format!("{}{}", key, category.suffix())) {
+            return Some(hit);
+        }
+        if category != PluralCategory::Other {
+            if let Some(hit) = lookup_exact(&l, &format!("{key}_other")) {
+                return Some(hit);
+            }
+        }
     }
     None
 }
@@ -1108,5 +1449,206 @@ mod tests {
         set_locale("");
         assert_eq!(get_locale(), "fr");
         set_default_locale(&restore);
+    }
+
+    /// The keys under `errors.messages` and `errors.types` of a catalog.
+    fn catalog_keys(locale: &str) -> Vec<String> {
+        let root = CATALOG.get(locale).expect("catalog parses");
+        let mut keys = Vec::new();
+        for section in ["messages", "types"] {
+            let node = node_at(root, &format!("errors.{section}"))
+                .and_then(|n| n.as_object())
+                .expect("section present");
+            for (key, value) in node {
+                assert!(value.is_string(), "{locale}: errors.{section}.{key}");
+                keys.push(format!("{section}.{key}"));
+            }
+        }
+        keys.sort();
+        keys
+    }
+
+    #[test]
+    fn every_builtin_catalog_has_every_code() {
+        let english = catalog_keys("en");
+        assert!(english.contains(&"messages.blank".to_string()));
+        for locale in builtin_message_locales() {
+            assert_eq!(catalog_keys(locale), english, "catalog {locale}");
+        }
+    }
+
+    #[test]
+    fn a_builtin_message_reads_in_the_request_locale() {
+        let _g = GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        install_locales(HashMap::new());
+        set_locale("fr");
+        assert_eq!(
+            error_message(None, "title", "blank", &[]).as_deref(),
+            Some("doit être rempli(e)")
+        );
+        let count = |n: &str| vec![("count".to_string(), n.to_string())];
+        assert_eq!(
+            error_message(None, "title", "too_short", &count("1")).as_deref(),
+            Some("est trop court (au moins 1 caractère)")
+        );
+        assert_eq!(
+            error_message(None, "title", "too_short", &count("3")).as_deref(),
+            Some("est trop court (au moins 3 caractères)")
+        );
+        let typed = vec![("type".to_string(), "int".to_string())];
+        assert_eq!(
+            error_message(None, "n", "wrong_type", &typed).as_deref(),
+            Some("doit être de type entier")
+        );
+        // `fr-CA` reads `fr`; a language Soli does not ship reads English.
+        set_locale("fr-CA");
+        assert_eq!(
+            error_message(None, "t", "taken", &[]).as_deref(),
+            Some("est déjà utilisé(e)")
+        );
+        set_locale("nl");
+        assert_eq!(
+            error_message(None, "t", "taken", &[]).as_deref(),
+            Some("has already been taken")
+        );
+        set_locale("en");
+        assert_eq!(
+            error_message(None, "n", "wrong_type", &typed).as_deref(),
+            Some("must be an int")
+        );
+        assert_eq!(error_message(None, "t", "no_such_code", &[]), None);
+        set_locale("");
+    }
+
+    #[test]
+    fn an_application_key_overrides_the_catalog_one_by_one() {
+        let _g = GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let mut store = HashMap::new();
+        store.insert(
+            "fr".to_string(),
+            serde_json::json!({
+                "errors": {"messages": {"blank": "est obligatoire"}},
+                "models": {"blog_post": {
+                    "errors": {
+                        "taken": "existe déjà",
+                        "attributes": {"slug": {"taken": "est pris par un autre article"}}
+                    },
+                    "attributes": {"slug": "Identifiant"}
+                }}
+            }),
+        );
+        store.insert(
+            "nl".to_string(),
+            serde_json::json!({"errors": {"messages": {"blank": "moet opgegeven zijn"}}}),
+        );
+        install_locales(store);
+        set_locale("fr");
+        assert_eq!(
+            error_message(None, "t", "blank", &[]).as_deref(),
+            Some("est obligatoire")
+        );
+        // Not overridden: Soli's French.
+        assert_eq!(
+            error_message(None, "t", "invalid", &[]).as_deref(),
+            Some("n'est pas valide")
+        );
+        assert_eq!(
+            error_message(Some("BlogPost"), "title", "taken", &[]).as_deref(),
+            Some("existe déjà")
+        );
+        assert_eq!(
+            error_message(Some("BlogPost"), "slug", "taken", &[]).as_deref(),
+            Some("est pris par un autre article")
+        );
+        // Names: the application's, else the field read as words.
+        assert_eq!(
+            human_attribute_name(Some("BlogPost"), "slug"),
+            "Identifiant"
+        );
+        assert_eq!(
+            human_attribute_name(Some("BlogPost"), "first_name"),
+            "First name"
+        );
+        assert_eq!(
+            full_message(Some("BlogPost"), "slug", "est pris"),
+            "Identifiant est pris"
+        );
+        assert_eq!(full_message(Some("BlogPost"), "_base", "refusé"), "refusé");
+        assert_eq!(human_model_name("BlogPost", None), "Blog post");
+        assert_eq!(human_model_name("Admin::UserRole", Some(2)), "User role");
+        // A locale only the application ships; a code it left out reads
+        // English, the end of the chain.
+        set_locale("nl");
+        assert_eq!(
+            error_message(None, "t", "blank", &[]).as_deref(),
+            Some("moet opgegeven zijn")
+        );
+        assert_eq!(
+            error_message(None, "t", "invalid", &[]).as_deref(),
+            Some("is invalid")
+        );
+        // `I18n.translate` reads the catalog for what the application lacks.
+        assert_eq!(
+            lookup_translation("de", "errors.messages.taken").as_deref(),
+            Some("ist bereits vergeben")
+        );
+        set_locale("");
+        install_locales(HashMap::new());
+    }
+
+    #[test]
+    fn declared_fallbacks_join_the_chain() {
+        let _g = GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        install_locales(HashMap::new());
+        assert_eq!(regional_chain("fr-CA"), vec!["fr-CA", "fr"]);
+        assert_eq!(locale_chain("fr-CA"), vec!["fr-CA", "fr", "en"]);
+
+        let mut declared = HashMap::new();
+        declared.insert("ca".to_string(), vec!["es".to_string()]);
+        set_fallbacks(declared);
+        assert_eq!(regional_chain("ca-AD"), vec!["ca-AD", "ca", "es"]);
+        set_locale("ca");
+        assert_eq!(
+            error_message(None, "t", "blank", &[]).as_deref(),
+            Some("no puede estar en blanco")
+        );
+        assert_eq!(
+            lookup_translation("ca", "errors.messages.taken").as_deref(),
+            Some("ya está en uso")
+        );
+        set_fallbacks(HashMap::new());
+        set_locale("");
+    }
+
+    #[test]
+    fn formatting_settings_come_from_the_regional_chain_only() {
+        let _g = GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let mut store = HashMap::new();
+        store.insert(
+            "nl".to_string(),
+            serde_json::json!({"number": {"separator": ",", "delimiter": "."}}),
+        );
+        store.insert(
+            "en".to_string(),
+            serde_json::json!({"date": {"format": "%Y"}}),
+        );
+        install_locales(store);
+        assert_eq!(
+            locale_setting("nl-BE", "number.separator").as_deref(),
+            Some(",")
+        );
+        // English's date format is not borrowed by a locale that has none.
+        assert_eq!(locale_setting("nl", "date.format"), None);
+        assert_eq!(group_digits("1234567", "."), "1.234.567");
+        assert_eq!(group_digits("-1234", " "), "-1 234");
+        assert_eq!(group_digits("123", "."), "123");
+        install_locales(HashMap::new());
+    }
+
+    #[test]
+    fn model_keys_are_snake_case_paths() {
+        assert_eq!(model_key("Post"), "post");
+        assert_eq!(model_key("BlogPost"), "blog_post");
+        assert_eq!(model_key("Admin::UserRole"), "admin/user_role");
     }
 }

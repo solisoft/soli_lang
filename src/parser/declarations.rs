@@ -747,6 +747,8 @@ impl Parser {
                 "scope",
                 "attr_accessible",
                 "encrypts",
+                "translate",
+                "translates",
                 "enum_field",
                 "value_field",
                 "part_of",

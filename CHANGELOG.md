@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+### Added
+- **Validation messages in six languages, overridable.** Built-in validation errors carry a code (`ValidationError::coded`: `blank`, `taken`, `invalid`, `not_a_number`, `too_short`, `too_long`, `greater_than_or_equal_to`, `less_than_or_equal_to`, `inclusion`, `wrong_type`, `value_object(_list)`, `foreign_key`, `still_referenced`, `stale`) and read it in the request's locale through `i18n::helpers::error_message`: `models.<model>.errors.attributes.<field>.<code>`, `models.<model>.errors.<code>`, `errors.messages.<code>` from the app's `config/locales`, then the catalog embedded from `src/interpreter/builtins/i18n/catalog/{en,fr,de,es,it,pt}.yml`, locale by locale along the chain. The catalog is kept out of the app's store so `Accept-Language` negotiation is unchanged. English text is unchanged (`wrong_type`'s article comes from `errors.types.<type>`; `too_short`/`too_long` now say "1 character" for a count of 1). `validates(…, {"message": "text" | :key})`; a custom validator may return a Symbol key. `ConstraintKind::message` became `code`. `I18n.translate` reads the catalog for keys the app lacks. The error hashes keep their `{field, message}` shape.
+- **`Model.human_name(count?)`, `Model.human_attribute_name(field)`, `record.full_messages`** (`models.<model>.name_one/_other`, `models.<model>.attributes.<field>`, `errors.format`). The form builder's `label` uses the translated name for a model record (`__soli_human_attribute`), and `error_summary` lists full messages (`__soli_full_messages`) — "Title can't be blank" instead of "can't be blank".
+- **`I18n.set_fallbacks`, `I18n.fallbacks`, `I18n.locale_chain`.** `lookup_translation` and `lookup_plural` follow locale → declared fallbacks → base language → default → `en` (they tried the locale and the default only). Translated fields read along the regional part of the chain.
+- **Formats from locale files:** `number.separator`, `number.delimiter`, `number.currency.{separator,delimiter,format}`, `date.format` drive `I18n.format_number` / `format_currency` / `format_date` for a locale (its regional chain only).
+- **Translated fields:** `translate` / `translates` in a model's body (handled in `execute_class_level_calls`, no global `translate()`); `record.translation(field, locale)`, `translations(field)`, `set_translation(field, locale, value)`; `Model.where_translated(hash)` / `order_translated(field, dir?)` (also chainable on a builder) and `Model.missing_translations(locale)`, SoliDB only (`model/translated.rs`); `{"locale": "fr"}` on a form field (`translated_fields[title][fr]`, `__soli_translation`). `update(hash)` / `save(hash)` write a translated field in the request's locale and merge a `translated_fields` hash locale by locale; `create` / `new` still seed the column (`seed_instance_attributes`).
+- **`soli i18n:export <locale> [--force]`** and **`soli i18n:missing <locale> [--from <locale>]`** (`src/cli/commands/i18n.rs`). `soli test` now loads the app's `config/locales`.
+
+### Fixed
+- **Translated fields persist.** `save` built the row before merging `_pending_translations` into `translated_fields`, so the translations stayed in memory and never reached the database (`update` did write them). The merge now happens first.
+- **A translated field reads back before save, in the locale it was written in.** An assignment is staged as `_pending_translations.{field}.{locale}` (was `{field}`) with the locale of the write, and a read checks it before `translated_fields` and the column. Before, `post.title = "Bonjour"` read as the old value until saved, and a save run in another locale filed the translation there.
+- **Deep paths in a string `where`.** `prefix_bare_fields` prefixed the last segment of a path of three or more levels: `doc.a.b.c` became `doc.a.b.doc.c` and matched nothing. A segment that follows a `.` is now left as written.
+
 ## [2.42.3] - 2026-11-26
 
 ### Fixed

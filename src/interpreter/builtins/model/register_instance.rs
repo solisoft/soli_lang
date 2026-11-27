@@ -184,7 +184,9 @@ pub(super) fn register(native_methods: &mut HashMap<String, Rc<NativeFunction>>)
                 let given = given_keys(&class_name, args);
                 match write_update(&class_name, &collection, &key_str, &instance, map, &given) {
                     Ok(Persisted::Stale) => {
-                        instance.borrow_mut().set("_errors", stale_errors());
+                        instance
+                            .borrow_mut()
+                            .set("_errors", stale_errors(&class_name));
                         Ok(Value::Bool(false))
                     }
                     Ok(Persisted::Written(result)) => {
@@ -319,22 +321,24 @@ pub(super) fn register(native_methods: &mut HashMap<String, Rc<NativeFunction>>)
                     return Err(timeseries_insert_only_error(&class_name, "save"));
                 }
 
-                // Handle pending translations before saving
+                // Fold pending translations into `translated_fields` before
+                // the persisted map is built — built first, the merged
+                // translations stayed in memory and never reached the row.
                 let translated_field_names = get_translated_fields(&class_name);
-                let has_translations = !translated_field_names.is_empty();
-
-                // Pre-compute translation data while we have inst_ref
-                let translation_update: Option<(
-                    serde_json::Map<String, serde_json::Value>,
-                    Vec<String>,
-                )> = if has_translations {
+                if !translated_field_names.is_empty() {
                     let translated_fields_json =
                         merged_translations(&inst_ref, &translated_field_names);
-
-                    Some((translated_fields_json, translated_field_names))
+                    drop(inst_ref);
+                    let mut inst_mut = instance.borrow_mut();
+                    inst_mut.fields.insert(
+                        "translated_fields".into(),
+                        json_to_value(&serde_json::Value::Object(translated_fields_json)),
+                    );
+                    inst_mut.fields.remove("_pending_translations");
                 } else {
-                    None
-                };
+                    drop(inst_ref);
+                }
+                let inst_ref = instance.borrow();
 
                 // Get data we need before dropping inst_ref
                 let data_hash = instance_fields_to_hash(&inst_ref);
@@ -353,17 +357,6 @@ pub(super) fn register(native_methods: &mut HashMap<String, Rc<NativeFunction>>)
                 // Now we can drop inst_ref
                 drop(inst_ref);
 
-                // Apply translation update if needed
-                if let Some((translated_fields_json, _)) = translation_update {
-                    let mut inst_mut = instance.borrow_mut();
-                    inst_mut.fields.insert(
-                        "translated_fields".into(),
-                        json_to_value(&serde_json::Value::Object(translated_fields_json)),
-                    );
-                    // Clear pending translations
-                    inst_mut.fields.remove("_pending_translations");
-                }
-
                 // Run validations
                 let class = instance.borrow().class.clone();
                 let errors =
@@ -381,7 +374,9 @@ pub(super) fn register(native_methods: &mut HashMap<String, Rc<NativeFunction>>)
                     let given = given_keys(&class_name, args);
                     match write_update(&class_name, &collection, key_str, &instance, map, &given) {
                         Ok(Persisted::Stale) => {
-                            instance.borrow_mut().set("_errors", stale_errors());
+                            instance
+                                .borrow_mut()
+                                .set("_errors", stale_errors(&class_name));
                             Ok(Value::Bool(false))
                         }
                         Ok(Persisted::Written(result)) => {
@@ -672,6 +667,118 @@ pub(super) fn register(native_methods: &mut HashMap<String, Rc<NativeFunction>>)
                 None => Ok(Value::Array(Rc::new(RefCell::new(vec![])))),
             }
         })),
+    );
+
+    // instance.translation("title", "fr") — that locale's value of a
+    // translated field, staged or stored; nil when it has none (no chain,
+    // no column).
+    native_methods.insert(
+        "translation".to_string(),
+        Rc::new(NativeFunction::new("Model#translation", Some(2), |args| {
+            let (instance, field) = translated_receiver(args, "translation")?;
+            let locale = match &args[2] {
+                Value::String(s) | Value::Symbol(s) => s.to_string(),
+                other => {
+                    return Err(format!(
+                        "translation(field, locale) expects a locale string, got {}",
+                        other.type_name()
+                    ))
+                }
+            };
+            let inst = instance.borrow();
+            let staged = super::translated::translation_in(
+                inst.get("_pending_translations").as_ref(),
+                &field,
+                &locale,
+            );
+            Ok(staged
+                .or_else(|| {
+                    super::translated::translation_in(
+                        inst.get("translated_fields").as_ref(),
+                        &field,
+                        &locale,
+                    )
+                })
+                .unwrap_or(Value::Null))
+        })),
+    );
+
+    // instance.translations("title") — every locale's value of a translated
+    // field, stored and staged: {fr => "Bonjour", es => "Hola"}.
+    native_methods.insert(
+        "translations".to_string(),
+        Rc::new(NativeFunction::new("Model#translations", Some(1), |args| {
+            let (instance, field) = translated_receiver(args, "translations")?;
+            let inst = instance.borrow();
+            let mut merged = crate::interpreter::value::HashPairs::default();
+            for source in ["translated_fields", "_pending_translations"] {
+                if let Some(Value::Hash(by_field)) = inst.get(source) {
+                    let by_locale = by_field
+                        .borrow()
+                        .get(&HashKey::String(field.clone().into()))
+                        .cloned();
+                    if let Some(Value::Hash(by_locale)) = by_locale {
+                        for (locale, value) in by_locale.borrow().iter() {
+                            merged.insert(locale.clone(), value.clone());
+                        }
+                    }
+                }
+            }
+            Ok(Value::Hash(Rc::new(RefCell::new(merged))))
+        })),
+    );
+
+    // instance.set_translation("title", "de", "Hallo") — stage a translation
+    // for another locale than the request's; `save` / `update` write it.
+    native_methods.insert(
+        "set_translation".to_string(),
+        Rc::new(NativeFunction::new(
+            "Model#set_translation",
+            Some(3),
+            |args| {
+                let (instance, field) = translated_receiver(args, "set_translation")?;
+                let locale = match &args[2] {
+                    Value::String(s) | Value::Symbol(s) => s.to_string(),
+                    other => {
+                        return Err(format!(
+                            "set_translation(field, locale, value) expects a locale string, got {}",
+                            other.type_name()
+                        ))
+                    }
+                };
+                super::translated::stage_translation(
+                    &mut instance.borrow_mut(),
+                    &field,
+                    &locale,
+                    args[3].clone(),
+                );
+                Ok(args[3].clone())
+            },
+        )),
+    );
+
+    // instance.full_messages - each error as a sentence naming its field,
+    // in the current locale: ["Title can't be blank", …]. A `_base` error is
+    // its message alone.
+    native_methods.insert(
+        "full_messages".to_string(),
+        Rc::new(NativeFunction::new(
+            "Model#full_messages",
+            Some(0),
+            |args| {
+                let Value::Instance(instance) = &args[0] else {
+                    return Err("Expected instance".to_string());
+                };
+                let inst_ref = instance.borrow();
+                let class_name = inst_ref.class.name.clone();
+                Ok(Value::Array(Rc::new(RefCell::new(
+                    full_messages_of(&class_name, inst_ref.get("_errors").as_ref())
+                        .into_iter()
+                        .map(|m| Value::String(m.into()))
+                        .collect(),
+                ))))
+            },
+        )),
     );
 
     // instance.reload - Re-fetch from DB and refresh all fields
@@ -1003,12 +1110,12 @@ pub(super) fn register(native_methods: &mut HashMap<String, Rc<NativeFunction>>)
 }
 
 /// The record's `translated_fields`, with each pending translation of
-/// `fields` (`_pending_translations`) written under the current locale.
+/// `fields` (`_pending_translations.{field}.{locale}`) written under the
+/// locale it was assigned in.
 fn merged_translations(
     inst: &Instance,
     fields: &[String],
 ) -> serde_json::Map<String, serde_json::Value> {
-    let locale = crate::interpreter::builtins::i18n::helpers::get_locale();
     let mut translated = match inst.get("translated_fields").map(|tf| value_to_json(&tf)) {
         Some(Ok(serde_json::Value::Object(obj))) => obj,
         _ => serde_json::Map::new(),
@@ -1018,14 +1125,19 @@ fn merged_translations(
         _ => return translated,
     };
     for field_name in fields {
-        let Some(pending_value) = pending.get(field_name) else {
+        let Some(serde_json::Value::Object(pending_by_locale)) = pending.get(field_name) else {
             continue;
         };
         let field_obj = translated
             .entry(field_name.clone())
             .or_insert_with(|| serde_json::Value::Object(serde_json::Map::new()));
+        if !field_obj.is_object() {
+            *field_obj = serde_json::Value::Object(serde_json::Map::new());
+        }
         if let serde_json::Value::Object(locale_obj) = field_obj {
-            locale_obj.insert(locale.clone(), pending_value.clone());
+            for (locale, value) in pending_by_locale {
+                locale_obj.insert(locale.clone(), value.clone());
+            }
         }
     }
     translated
@@ -1125,22 +1237,70 @@ pub(super) fn lock_version_value(value: Option<&Value>) -> i64 {
     }
 }
 
-/// The message of a stale write.
-pub(super) const STALE_MESSAGE: &str =
-    "is stale: the record was changed since it was read — reload it and try again";
+/// The record and the field name of `record.<method>(field, …)`, the field
+/// being one the model declared with `translate`.
+fn translated_receiver(
+    args: &[Value],
+    method: &str,
+) -> Result<(Rc<RefCell<crate::interpreter::value::Instance>>, String), String> {
+    let Value::Instance(instance) = &args[0] else {
+        return Err("Expected instance".to_string());
+    };
+    let field = match args.get(1) {
+        Some(Value::String(s)) | Some(Value::Symbol(s)) => s.to_string(),
+        other => {
+            return Err(format!(
+                "{method}() expects a field name first, got {}",
+                other.map_or_else(|| "nothing".to_string(), |v| v.type_name())
+            ))
+        }
+    };
+    let class_name = instance.borrow().class.name.clone();
+    if !super::is_translated_field(&class_name, &field) {
+        return Err(format!(
+            "{method}(): \"{field}\" is not a translated field of {class_name} \
+             (declare it with translate \"{field}\")"
+        ));
+    }
+    Ok((instance.clone(), field))
+}
 
-/// `_errors` for a stale write.
-pub(super) fn stale_errors() -> Value {
-    let mut error = crate::interpreter::value::HashPairs::default();
-    error.insert(
-        HashKey::String("field".into()),
-        Value::String("lock_version".into()),
-    );
-    error.insert(
-        HashKey::String("message".into()),
-        Value::String(STALE_MESSAGE.into()),
-    );
-    Value::Array(Rc::new(RefCell::new(vec![Value::Hash(Rc::new(
-        RefCell::new(error),
-    ))])))
+/// `errors` (a record's `_errors`) as full sentences: each `{field,
+/// message}` hash through `i18n::helpers::full_message`, a bare String
+/// error as it is. `class_name` names the fields (`models.<model>.
+/// attributes.<field>`); `None` reads them as words.
+pub(crate) fn full_messages_of(class_name: &str, errors: Option<&Value>) -> Vec<String> {
+    let Some(Value::Array(entries)) = errors else {
+        return Vec::new();
+    };
+    let model = (!class_name.is_empty()).then_some(class_name);
+    entries
+        .borrow()
+        .iter()
+        .filter_map(|entry| match entry {
+            Value::Hash(hash) => {
+                let hash = hash.borrow();
+                let text = |key: &str| match hash.get(&HashKey::String(key.into())) {
+                    Some(Value::String(s)) => s.to_string(),
+                    Some(Value::Null) | None => String::new(),
+                    Some(other) => other.to_string(),
+                };
+                Some(crate::interpreter::builtins::i18n::helpers::full_message(
+                    model,
+                    &text("field"),
+                    &text("message"),
+                ))
+            }
+            Value::String(message) => Some(message.to_string()),
+            _ => None,
+        })
+        .collect()
+}
+
+/// `_errors` for a stale write of a `class_name` record: `lock_version`
+/// with the `stale` message, in the current locale.
+pub(super) fn stale_errors(class_name: &str) -> Value {
+    let mut error = super::validation::ValidationError::coded("lock_version", "stale", Vec::new());
+    error.localize(class_name);
+    Value::Array(Rc::new(RefCell::new(vec![error.to_value()])))
 }

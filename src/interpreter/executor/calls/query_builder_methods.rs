@@ -68,6 +68,60 @@ impl Interpreter {
         match method_name {
             "create" => self.qb_create(qb, arguments, span),
             "where" => self.qb_where(qb, arguments, span),
+            "where_translated" => {
+                let class_name = crate::interpreter::symbol::symbol_string(qb.borrow().class_name)
+                    .unwrap_or_default()
+                    .to_string();
+                let Some(Value::Hash(conditions)) = arguments.first() else {
+                    return Err(RuntimeError::type_error(
+                        "where_translated() expects a Hash of conditions",
+                        span,
+                    ));
+                };
+                // A namespace of its own for the binds, past the builder's.
+                let namespace = qb.borrow().bind_vars.len() + 1;
+                let (filter, binds) =
+                    crate::interpreter::builtins::model::translated::translated_filter(
+                        &class_name,
+                        &conditions.borrow(),
+                        namespace,
+                    )
+                    .map_err(|e| RuntimeError::type_error(e, span))?;
+                let mut bind_hash = crate::interpreter::value::HashPairs::default();
+                for (name, value) in binds {
+                    bind_hash.insert(
+                        crate::interpreter::value::HashKey::String(name.into()),
+                        crate::interpreter::value_json::json_to_value_or_null(value),
+                    );
+                }
+                self.qb_where(
+                    qb,
+                    vec![
+                        Value::String(filter.into()),
+                        Value::Hash(Rc::new(RefCell::new(bind_hash))),
+                    ],
+                    span,
+                )
+            }
+            "order_translated" => {
+                let class_name = crate::interpreter::symbol::symbol_string(qb.borrow().class_name)
+                    .unwrap_or_default()
+                    .to_string();
+                let (field, direction) =
+                    crate::interpreter::builtins::model::translated::order_translated_args(
+                        &arguments,
+                    )
+                    .map_err(|e| RuntimeError::type_error(e, span))?;
+                let criterion =
+                    crate::interpreter::builtins::model::translated::translated_order_field(
+                        &class_name,
+                        &field,
+                    )
+                    .map_err(|e| RuntimeError::type_error(e, span))?;
+                let mut new_qb = qb.borrow().clone();
+                new_qb.set_order(criterion, direction);
+                Ok(Value::QueryBuilder(Rc::new(RefCell::new(new_qb))))
+            }
             "order" => self.qb_order(qb, arguments, span, false),
             "reorder" => self.qb_order(qb, arguments, span, true),
             "limit" => self.qb_limit(qb, arguments, span),

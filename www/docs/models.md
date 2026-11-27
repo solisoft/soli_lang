@@ -864,6 +864,7 @@ end
 | `allow_nil: true` (or `allow_null: true`) | Skip the whole rule when the value is nil or absent |
 | `custom: "method_name"` | Call an instance method of the model — see [Custom Validators](#custom-validators) |
 | `custom: fn(value, record) { ... }` | Call a closure — same return rules as the method form |
+| `message: "text"` / `message: :key` | Replace the rule's message: a sentence, or a translation key (see [Validation messages](i18n.md#validation-messages)) |
 | `on: "create"` / `on: "update"` | Only run the rule for that operation |
 | `if: fn(record) { ... }` | Only run the rule when the closure is truthy |
 | `unless: fn(record) { ... }` | Skip the rule when the closure is truthy |
@@ -1000,6 +1001,13 @@ else
   print("Created user: " + user.id);
 end
 ```
+
+The messages read in the request's locale: Soli ships them for `en`, `fr`,
+`de`, `es`, `it` and `pt`, and `config/locales/*.yml` overrides any of them or
+adds a language — see [Validation messages](i18n.md#validation-messages).
+`user.full_messages` gives each error as a sentence naming its field
+(`["Email can't be blank"]`, with the field's translated name when the locale
+file has one).
 
 ### Atomic uniqueness
 
@@ -3068,6 +3076,21 @@ the migration `db` handle for one-off cleanups. For continuous aggregates
 (downsampling on write), SolidB streams are the raw-SDBQL escape hatch —
 `db.query("CREATE STREAM ...")` in a migration. See
 [Migrations](migrations.md).
+
+## Translated Fields
+
+`translate "title", "body"` in a model's body keeps one value per locale for
+those fields, in a `translated_fields` hash of the same document, and
+`record.title` reads and writes the request's locale, falling back to the
+column. `where_translated` / `order_translated` query them as a reader in the
+locale sees them, and `{"locale": "fr"}` on a form field edits one locale.
+See [Translated model fields](i18n.md#translated-model-fields).
+
+```soli
+class Article < Model
+  translate "title", "body"
+end
+```
 
 ## Encrypted Attributes
 

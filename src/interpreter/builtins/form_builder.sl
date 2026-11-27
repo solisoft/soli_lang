@@ -109,9 +109,11 @@ class FormBuilder
     end
 
     def label(field, text = null, options = null)
-        extra = this.attributes_without(options, [])
-        caption = text ?? field.replace("_", " ").capitalize()
-        input_id = this.id_for(field)
+        extra = this.attributes_without(options, ["locale"])
+        # A model's translated field name (models.<model>.attributes.<field>),
+        # else the field read as words.
+        caption = text ?? __soli_human_attribute(this.record, field) ?? field.replace("_", " ").capitalize()
+        input_id = this.id_for(field, options)
         escaped_caption = h(caption)
         "<label for=\"#{input_id}\"#{extra}>#{escaped_caption}</label>"
     end
@@ -150,11 +152,11 @@ class FormBuilder
 
     def text_area(field, options = null)
         opts = options ?? {}
-        extra = this.attributes_without(opts, ["class", "value", "name"])
+        extra = this.attributes_without(opts, ["class", "value", "name", "locale"])
         class_attr = this.class_attribute(field, opts)
         invalid = this.invalid_attribute(field)
-        value = opts["value"] ?? this.value_for(field)
-        input_id = this.id_for(field)
+        value = opts["value"] ?? this.value_for(field, opts)
+        input_id = this.id_for(field, opts)
         input_name = this.name_for(field, opts)
         escaped_value = h(value.to_s)
         "<textarea id=\"#{input_id}\" name=\"#{input_name}\"#{class_attr}#{invalid}#{extra}>#{escaped_value}</textarea>"
@@ -237,19 +239,21 @@ class FormBuilder
     end
 
     # Top-of-form list of every validation error ("" when the record is
-    # valid). Pass {"class": "..."} to restyle the wrapping div.
+    # valid), each as a sentence naming its field in the current locale
+    # ("Title can't be blank"). Pass {"class": "..."} to restyle the
+    # wrapping div.
     def error_summary(options = null)
         return "" if this.record.nil?
 
-        all_errors = this.record["_errors"] ?? []
-        return "" if all_errors.empty?
+        lines = __soli_full_messages(this.record)
+        return "" if lines.empty?
 
         opts = options ?? {}
         css = attr((opts["class"] ?? "form-errors").to_s)
         html = "<div class=\"#{css}\"><ul>"
-        for err in all_errors
-            escaped_message = h(err["message"].to_s)
-            html = html + "<li>#{escaped_message}</li>"
+        for line in lines
+            escaped_line = h(line)
+            html = html + "<li>#{escaped_line}</li>"
         end
         html + "</ul></div>"
     end
@@ -258,34 +262,50 @@ class FormBuilder
 
     def input(input_type, field, options = null)
         opts = options ?? {}
-        extra = this.attributes_without(opts, ["class", "value", "name"])
+        extra = this.attributes_without(opts, ["class", "value", "name", "locale"])
         class_attr = this.class_attribute(field, opts)
         invalid = this.invalid_attribute(field)
         value = opts["value"]
         if value.nil? && input_type != "password" && input_type != "file"
-            value = this.value_for(field)
+            value = this.value_for(field, opts)
         end
         value_attr = ""
         if !value.nil?
             escaped_value = attr(value.to_s)
             value_attr = " value=\"#{escaped_value}\""
         end
-        input_id = this.id_for(field)
+        input_id = this.id_for(field, opts)
         input_name = this.name_for(field, opts)
         "<input type=\"#{input_type}\" id=\"#{input_id}\" name=\"#{input_name}\"#{value_attr}#{class_attr}#{invalid}#{extra}>"
     end
 
-    def value_for(field)
+    # {"locale": "fr"} reads the record's French translation of a translated
+    # field (`translate "title"` on the model) instead of the field itself.
+    def value_for(field, opts = null)
         return null if this.record.nil?
+
+        locale = nil
+        locale = opts["locale"] unless opts.nil?
+        return __soli_translation(this.record, field, locale.to_s) unless locale.nil?
 
         this.record[field]
     end
 
     # name attribute: prefixed bracket form under fields_for, flat otherwise.
     # A "name" option on the helper overrides it verbatim.
+    # {"locale": "fr"} names the field translated_fields[title][fr], which
+    # `update(params)` merges into the record's other translations.
     def name_for(field, opts)
         override = opts["name"]
         return attr(override.to_s) unless override.nil?
+
+        locale = opts["locale"]
+        unless locale.nil?
+            nested = "translated_fields[" + field + "][" + locale.to_s + "]"
+            return attr(nested) if this.name_prefix.blank?
+
+            return attr(this.name_prefix + "[translated_fields][" + field + "][" + locale.to_s + "]")
+        end
 
         return attr(field) if this.name_prefix.blank?
 
@@ -294,11 +314,16 @@ class FormBuilder
 
     # id attribute: brackets flattened to underscores (author[name] →
     # author_name) so labels stay linkable.
-    def id_for(field)
-        return attr(field) if this.name_prefix.blank?
+    # A per-locale field ({"locale": "fr"}) gets its own id: title_fr.
+    def id_for(field, opts = null)
+        locale = nil
+        locale = opts["locale"] unless opts.nil?
+        base = field
+        base = field + "_" + locale.to_s unless locale.nil?
+        return attr(base) if this.name_prefix.blank?
 
         flat_prefix = this.name_prefix.replace("][", "_").replace("[", "_").replace("]", "")
-        attr(flat_prefix + "_" + field)
+        attr(flat_prefix + "_" + base)
     end
 
     def field_errors(field)

@@ -116,12 +116,15 @@ fn run_validator_body(func: &Function, env: Environment, what: &str) -> Result<V
 }
 
 /// Turn what a custom validator returned into errors: `false` is "is
-/// invalid", a String is the message, anything else passes. (`nil` passes
+/// invalid", a String is the message, a Symbol a translation key
+/// (`:not_open` reads `errors.messages.not_open`, or the model's own
+/// `models.<model>.errors.not_open`), anything else passes. (`nil` passes
 /// too — a method that only pushes onto `_errors` usually ends on nothing.)
 fn push_custom_outcome(errors: &mut Vec<ValidationError>, field: &str, outcome: &Value) {
     match outcome {
-        Value::Bool(false) => errors.push(ValidationError::new(field, "is invalid")),
+        Value::Bool(false) => errors.push(ValidationError::coded(field, "invalid", Vec::new())),
         Value::String(message) => errors.push(ValidationError::new(field, message.to_string())),
+        Value::Symbol(key) => errors.push(ValidationError::coded(field, key, Vec::new())),
         _ => {}
     }
 }
@@ -181,12 +184,25 @@ fn run_custom_method(
                         Some(Value::Null) | None => None,
                         Some(other) => Some(other.to_string()),
                     };
-                    (
-                        text("field").unwrap_or_else(|| rule.field.clone()),
-                        text("message").unwrap_or_else(|| "is invalid".to_string()),
-                    )
+                    let field = text("field").unwrap_or_else(|| rule.field.clone());
+                    match h.get(&HashKey::String("message".into())) {
+                        // `{"field": …, "message": :key}` — a translation key.
+                        Some(Value::Symbol(key)) => {
+                            errors.push(ValidationError::coded(field, key, Vec::new()));
+                            continue;
+                        }
+                        None | Some(Value::Null) => {
+                            errors.push(ValidationError::coded(field, "invalid", Vec::new()));
+                            continue;
+                        }
+                        _ => (field, text("message").unwrap_or_default()),
+                    }
                 }
                 Value::String(message) => (rule.field.clone(), message.to_string()),
+                Value::Symbol(key) => {
+                    errors.push(ValidationError::coded(rule.field.clone(), key, Vec::new()));
+                    continue;
+                }
                 _ => continue,
             };
             errors.push(ValidationError::new(field, message));
@@ -242,6 +258,20 @@ pub struct ValidationRule {
     /// True when an `if:`/`unless:` closure is attached (the closures
     /// themselves live in the thread-local [`RULE_CONDITIONS`] registry).
     pub has_condition: bool,
+    /// `message:` — replaces the message of every built-in check of this
+    /// rule (not a custom validator's own sentence).
+    pub message: Option<RuleMessage>,
+}
+
+/// What `message:` gives a rule.
+#[derive(Debug, Clone, PartialEq)]
+pub enum RuleMessage {
+    /// `message: "must be a slug"` — this sentence, in every locale.
+    Text(String),
+    /// `message: :slug_format` — a translation key, looked up like a code
+    /// (`models.<model>.errors.attributes.<field>.slug_format`, …,
+    /// `errors.messages.slug_format`).
+    Key(String),
 }
 
 impl ValidationRule {
@@ -254,10 +284,20 @@ impl ValidationRule {
 }
 
 /// A validation error.
+///
+/// A built-in rule's error carries a `code` (`blank`, `too_short`, …) and its
+/// `params` (`count`, `type`, …); its `message` is that code read in the
+/// current locale (`i18n::helpers::error_message`), and [`localize`] reads it
+/// again with the model's own keys once the model is known. A custom
+/// validator's sentence has no code and is never touched.
+///
+/// [`localize`]: ValidationError::localize
 #[derive(Debug, Clone)]
 pub struct ValidationError {
     pub field: String,
     pub message: String,
+    pub code: Option<String>,
+    pub params: Vec<(String, String)>,
 }
 
 impl ValidationError {
@@ -265,6 +305,40 @@ impl ValidationError {
         Self {
             field: field.into(),
             message: message.into(),
+            code: None,
+            params: Vec::new(),
+        }
+    }
+
+    /// An error by code, its message read from the translations (the
+    /// application's, then Soli's catalog). A code nothing translates reads
+    /// as the code itself, so the gap shows.
+    pub fn coded(field: impl Into<String>, code: &str, params: Vec<(String, String)>) -> Self {
+        let field = field.into();
+        let message =
+            crate::interpreter::builtins::i18n::helpers::error_message(None, &field, code, &params)
+                .unwrap_or_else(|| code.to_string());
+        Self {
+            field,
+            message,
+            code: Some(code.to_string()),
+            params,
+        }
+    }
+
+    /// Read a coded message again with `class_name`'s own keys
+    /// (`models.<model>.errors.attributes.<field>.<code>`, `models.<model>.errors.
+    /// <code>`), which win over the shared `errors.messages`.
+    pub fn localize(&mut self, class_name: &str) {
+        if let Some(code) = &self.code {
+            // A key nothing translates reads as the key, as `coded` does.
+            self.message = crate::interpreter::builtins::i18n::helpers::error_message(
+                Some(class_name),
+                &self.field,
+                code,
+                &self.params,
+            )
+            .unwrap_or_else(|| code.clone());
         }
     }
 
@@ -324,7 +398,7 @@ pub fn register_validation_with_conditions(
 /// Every key `validates(field, {...})` understands, for the unknown-key error.
 const VALIDATES_KEYS: &str = "presence, uniqueness, min_length, max_length, format, \
      numericality, min, max, inclusion (or one_of), type, allow_nil (or allow_null), custom, \
-     on, if, unless";
+     message, on, if, unless";
 
 const VALUE_TYPES: &[&str] = &[
     "string", "int", "integer", "float", "number", "bool", "boolean", "array", "hash",
@@ -435,6 +509,17 @@ pub fn parse_validates_options(
                     return Err(wrong_type(
                         key_str,
                         "a method name or a fn(value, record) closure",
+                        other,
+                    ))
+                }
+            },
+            "message" => match value {
+                Value::String(s) => rule.message = Some(RuleMessage::Text(s.to_string())),
+                Value::Symbol(s) => rule.message = Some(RuleMessage::Key(s.to_string())),
+                other => {
+                    return Err(wrong_type(
+                        key_str,
+                        "a String (the message) or a Symbol (a translation key)",
                         other,
                     ))
                 }
@@ -641,9 +726,10 @@ fn constraint_field(err: &str) -> Option<String> {
 pub fn build_constraint_errors(err: &str) -> Option<Vec<ValidationError>> {
     let constraint = crate::db::error::Constraint::parse(err)?;
     let field = constraint.field().unwrap_or_else(|| "_base".to_string());
-    Some(vec![ValidationError::new(
+    Some(vec![ValidationError::coded(
         &field,
-        constraint.kind.message(),
+        constraint.kind.code(),
+        Vec::new(),
     )])
 }
 
@@ -659,9 +745,10 @@ pub fn solidb_foreign_key_error(err: &str) -> Option<ValidationError> {
     const MARK: &str = "Foreign key violation: ";
     let said = &err[err.find(MARK)? + MARK.len()..];
     if said.contains("is still referred to by") {
-        return Some(ValidationError::new(
+        return Some(ValidationError::coded(
             "_base",
-            "is still referenced by other records",
+            "still_referenced",
+            Vec::new(),
         ));
     }
     let field = said
@@ -670,9 +757,10 @@ pub fn solidb_foreign_key_error(err: &str) -> Option<ValidationError> {
         .map(|(field, _)| field)
         .filter(|field| !field.is_empty())
         .unwrap_or("_base");
-    Some(ValidationError::new(
+    Some(ValidationError::coded(
         field,
-        crate::db::error::ConstraintKind::ForeignKey.message(),
+        crate::db::error::ConstraintKind::ForeignKey.code(),
+        Vec::new(),
     ))
 }
 
@@ -701,21 +789,23 @@ pub fn unique_validation_fields(class_name: &str) -> Vec<String> {
 pub fn build_unique_violation_errors(class_name: &str, err: &str) -> Vec<ValidationError> {
     // When the database named the column, use it: it is the truth, and it works
     // for a unique index the model never declared a validation for.
+    let taken = |field: &str| {
+        let mut error = ValidationError::coded(field, "taken", Vec::new());
+        error.localize(class_name);
+        error
+    };
     if let Some(field) = constraint_field(err) {
-        return vec![ValidationError::new(&field, "has already been taken")];
+        return vec![taken(&field)];
     }
     let unique = unique_validation_fields(class_name);
     let lower = err.to_lowercase();
     if let Some(field) = unique.iter().find(|f| lower.contains(&f.to_lowercase())) {
-        return vec![ValidationError::new(field, "has already been taken")];
+        return vec![taken(field)];
     }
     if unique.is_empty() {
-        return vec![ValidationError::new("_base", "has already been taken")];
+        return vec![taken("_base")];
     }
-    unique
-        .into_iter()
-        .map(|f| ValidationError::new(f, "has already been taken"))
-        .collect()
+    unique.iter().map(|f| taken(f)).collect()
 }
 
 /// Invoke an `if:`/`unless:` condition closure. The record hash is bound to
@@ -846,18 +936,17 @@ pub fn run_validations(
         if rule.allow_nil && is_nil {
             continue;
         }
+        let rule_errors_start = errors.len();
 
         // Presence validation
         if rule.presence {
-            match &field_value {
-                None => errors.push(ValidationError::new(&rule.field, "can't be blank")),
-                Some(Value::Null) => {
-                    errors.push(ValidationError::new(&rule.field, "can't be blank"))
-                }
-                Some(Value::String(s)) if s.is_empty() => {
-                    errors.push(ValidationError::new(&rule.field, "can't be blank"))
-                }
-                _ => {}
+            let blank = match &field_value {
+                None | Some(Value::Null) => true,
+                Some(Value::String(s)) => s.is_empty(),
+                _ => false,
+            };
+            if blank {
+                errors.push(ValidationError::coded(&rule.field, "blank", Vec::new()));
             }
         }
 
@@ -865,9 +954,10 @@ pub fn run_validations(
         if let Some(min_len) = rule.min_length {
             if let Some(Value::String(s)) = &field_value {
                 if crate::interpreter::executor::calls::string_methods::char_len(s) < min_len {
-                    errors.push(ValidationError::new(
+                    errors.push(ValidationError::coded(
                         &rule.field,
-                        format!("is too short (minimum is {} characters)", min_len),
+                        "too_short",
+                        vec![("count".into(), min_len.to_string())],
                     ));
                 }
             }
@@ -877,9 +967,10 @@ pub fn run_validations(
         if let Some(max_len) = rule.max_length {
             if let Some(Value::String(s)) = &field_value {
                 if crate::interpreter::executor::calls::string_methods::char_len(s) > max_len {
-                    errors.push(ValidationError::new(
+                    errors.push(ValidationError::coded(
                         &rule.field,
-                        format!("is too long (maximum is {} characters)", max_len),
+                        "too_long",
+                        vec![("count".into(), max_len.to_string())],
                     ));
                 }
             }
@@ -936,7 +1027,7 @@ pub fn run_validations(
                             .is_empty()
                     };
                     if taken {
-                        errors.push(ValidationError::new(&rule.field, "has already been taken"));
+                        errors.push(ValidationError::coded(&rule.field, "taken", Vec::new()));
                     }
                 }
             }
@@ -958,7 +1049,7 @@ pub fn run_validations(
                     true
                 };
                 if !is_valid {
-                    errors.push(ValidationError::new(&rule.field, "is invalid"));
+                    errors.push(ValidationError::coded(&rule.field, "invalid", Vec::new()));
                 }
             }
         }
@@ -967,63 +1058,47 @@ pub fn run_validations(
         if rule.numericality {
             match &field_value {
                 Some(Value::Int(_)) | Some(Value::Float(_)) => {}
-                Some(_) => errors.push(ValidationError::new(&rule.field, "is not a number")),
+                Some(_) => errors.push(ValidationError::coded(
+                    &rule.field,
+                    "not_a_number",
+                    Vec::new(),
+                )),
                 None => {} // Skip if field is not present (presence handles required)
             }
         }
 
-        // Min value validation
-        if let Some(min_val) = rule.min {
-            match &field_value {
-                Some(Value::Int(n)) if (*n as f64) < min_val => {
-                    errors.push(ValidationError::new(
-                        &rule.field,
-                        format!("must be greater than or equal to {}", min_val),
-                    ));
-                }
-                Some(Value::Float(n)) if *n < min_val => {
-                    errors.push(ValidationError::new(
-                        &rule.field,
-                        format!("must be greater than or equal to {}", min_val),
-                    ));
-                }
-                _ => {}
+        // Min / max value validation
+        let number = match &field_value {
+            Some(Value::Int(n)) => Some(*n as f64),
+            Some(Value::Float(n)) => Some(*n),
+            _ => None,
+        };
+        if let (Some(min_val), Some(n)) = (rule.min, number) {
+            if n < min_val {
+                errors.push(ValidationError::coded(
+                    &rule.field,
+                    "greater_than_or_equal_to",
+                    vec![("count".into(), min_val.to_string())],
+                ));
             }
         }
-
-        // Max value validation
-        if let Some(max_val) = rule.max {
-            match &field_value {
-                Some(Value::Int(n)) if (*n as f64) > max_val => {
-                    errors.push(ValidationError::new(
-                        &rule.field,
-                        format!("must be less than or equal to {}", max_val),
-                    ));
-                }
-                Some(Value::Float(n)) if *n > max_val => {
-                    errors.push(ValidationError::new(
-                        &rule.field,
-                        format!("must be less than or equal to {}", max_val),
-                    ));
-                }
-                _ => {}
+        if let (Some(max_val), Some(n)) = (rule.max, number) {
+            if n > max_val {
+                errors.push(ValidationError::coded(
+                    &rule.field,
+                    "less_than_or_equal_to",
+                    vec![("count".into(), max_val.to_string())],
+                ));
             }
         }
 
         // Type validation
         if let (Some(expected), Some(value)) = (&rule.value_type, &field_value) {
             if !is_nil && !value_has_type(value, expected) {
-                errors.push(ValidationError::new(
+                errors.push(ValidationError::coded(
                     &rule.field,
-                    format!(
-                        "must be {} {}",
-                        if expected.starts_with(['a', 'e', 'i', 'o', 'u']) {
-                            "an"
-                        } else {
-                            "a"
-                        },
-                        expected
-                    ),
+                    "wrong_type",
+                    vec![("type".into(), expected.clone())],
                 ));
             }
         }
@@ -1035,10 +1110,7 @@ pub fn run_validations(
                     .map(|json| allowed.contains(&json))
                     .unwrap_or(false);
                 if !included {
-                    errors.push(ValidationError::new(
-                        &rule.field,
-                        "is not included in the list",
-                    ));
+                    errors.push(ValidationError::coded(&rule.field, "inclusion", Vec::new()));
                 }
             }
         }
@@ -1055,6 +1127,22 @@ pub fn run_validations(
         // Custom validation: `custom: "method"`, called on the record
         if let Some(method) = &rule.custom {
             run_custom_method(class_name, class, rule, method, data, &mut errors)?;
+        }
+
+        // `message:` replaces what this rule's built-in checks said.
+        if let Some(message) = &rule.message {
+            for error in errors[rule_errors_start..]
+                .iter_mut()
+                .filter(|e| e.code.is_some())
+            {
+                match message {
+                    RuleMessage::Text(text) => {
+                        error.message = text.clone();
+                        error.code = None;
+                    }
+                    RuleMessage::Key(key) => error.code = Some(key.clone()),
+                }
+            }
         }
     }
 
@@ -1074,12 +1162,16 @@ pub fn run_validations(
             Some(value) => is_value(&value),
         };
         if !valid {
-            let message = if is_list {
-                format!("must be a list of {value_class}")
+            let code = if is_list {
+                "value_object_list"
             } else {
-                format!("must be a {value_class}")
+                "value_object"
             };
-            errors.push(ValidationError::new(&field, message));
+            errors.push(ValidationError::coded(
+                &field,
+                code,
+                vec![("class".into(), value_class.to_string())],
+            ));
         }
     }
 
@@ -1091,6 +1183,9 @@ pub fn run_validations(
         }
     }
 
+    for error in &mut errors {
+        error.localize(class_name);
+    }
     Ok(errors)
 }
 

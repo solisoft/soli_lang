@@ -140,6 +140,16 @@ pub fn run() {
         } => {
             commands::run_db_create_or_drop(folder, connection.as_deref(), tenant.as_deref(), true)
         }
+        Command::I18nExport {
+            locale,
+            folder,
+            force,
+        } => commands::i18n::run_i18n_export(locale, folder, *force),
+        Command::I18nMissing {
+            locale,
+            folder,
+            from,
+        } => commands::i18n::run_i18n_missing(locale, folder, from.as_deref()),
         Command::Routes { folder, grep, json } => {
             commands::run_routes(folder, grep.as_deref(), *json)
         }

@@ -103,7 +103,7 @@ may still exist under another name — try a synonym before writing it by hand.
 | htmx / Alpine (shipped, no build step) | `public/js/` | `docs/client-interactivity.md` |
 | SSE, chunked streaming | streaming responses | `docs/streaming.md` |
 | Web push | `vapid_*` | `docs/builtins/vapid.md` |
-| i18n, pluralization, money/date formatting | `I18n.*`, `Money`, `DateTime`, `Duration` | `docs/i18n.md`, `docs/builtins.md` |
+| i18n (validation messages, model & field names, translated model fields), pluralization, money/date formatting | `I18n.*`, `translate "title"`, `Money`, `DateTime`, `Duration` | `docs/i18n.md`, `docs/builtins.md` |
 | State machines on a model | `state_machine` block | `docs/state-machines.md` |
 | Vector / fulltext / geo search | model search indexes | `docs/search.md` |
 | Analytics, columnar stores | SolidB analytics | `docs/analytics.md` |

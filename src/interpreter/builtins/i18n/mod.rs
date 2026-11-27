@@ -220,6 +220,94 @@ pub fn register_i18n_class(env: &mut Environment) {
         )),
     );
 
+    // I18n.set_fallbacks({"ca": ["es"], "pt-BR": "pt"}) — the locales tried
+    // right after each one, before its base language, the default locale and
+    // English. Per application; replaces what was declared before.
+    i18n_static_methods.insert(
+        "set_fallbacks".to_string(),
+        Rc::new(NativeFunction::new("I18n.set_fallbacks", Some(1), |args| {
+            let Value::Hash(hash) = &args[0] else {
+                return Err(format!(
+                    "I18n.set_fallbacks expects a hash of locale => fallbacks, got {}",
+                    args[0].type_name()
+                ));
+            };
+            let mut declared: HashMap<String, Vec<String>> = HashMap::new();
+            for (key, value) in hash.borrow().iter() {
+                let locale = match key {
+                    HashKey::String(s) | HashKey::Symbol(s) => s.to_string(),
+                    _ => return Err("I18n.set_fallbacks: locale names must be strings".into()),
+                };
+                let list = match value {
+                    Value::String(s) | Value::Symbol(s) => vec![s.to_string()],
+                    Value::Array(items) => items
+                        .borrow()
+                        .iter()
+                        .map(|item| match item {
+                            Value::String(s) | Value::Symbol(s) => Ok(s.to_string()),
+                            other => Err(format!(
+                                "I18n.set_fallbacks: \"{locale}\" lists a {}, not a locale",
+                                other.type_name()
+                            )),
+                        })
+                        .collect::<Result<Vec<_>, _>>()?,
+                    other => {
+                        return Err(format!(
+                            "I18n.set_fallbacks: \"{locale}\" expects a locale or a list, got {}",
+                            other.type_name()
+                        ))
+                    }
+                };
+                declared.insert(locale, list);
+            }
+            helpers::set_fallbacks(declared);
+            Ok(args[0].clone())
+        })),
+    );
+
+    // I18n.fallbacks() — what set_fallbacks declared.
+    i18n_static_methods.insert(
+        "fallbacks".to_string(),
+        Rc::new(NativeFunction::new("I18n.fallbacks", Some(0), |_| {
+            let mut pairs = HashPairs::default();
+            let mut declared: Vec<(String, Vec<String>)> =
+                helpers::fallbacks().into_iter().collect();
+            declared.sort();
+            for (locale, list) in declared {
+                pairs.insert(
+                    HashKey::String(locale.into()),
+                    Value::Array(Rc::new(std::cell::RefCell::new(
+                        list.into_iter().map(|l| Value::String(l.into())).collect(),
+                    ))),
+                );
+            }
+            Ok(Value::Hash(Rc::new(std::cell::RefCell::new(pairs))))
+        })),
+    );
+
+    // I18n.locale_chain(locale?) — the locales a lookup tries, in order.
+    i18n_static_methods.insert(
+        "locale_chain".to_string(),
+        Rc::new(NativeFunction::new("I18n.locale_chain", None, |args| {
+            let locale = match args.first() {
+                None | Some(Value::Null) => get_locale(),
+                Some(Value::String(s)) => s.to_string(),
+                Some(other) => {
+                    return Err(format!(
+                        "I18n.locale_chain expects a locale string, got {}",
+                        other.type_name()
+                    ))
+                }
+            };
+            Ok(Value::Array(Rc::new(std::cell::RefCell::new(
+                helpers::locale_chain(&locale)
+                    .into_iter()
+                    .map(|l| Value::String(l.into()))
+                    .collect(),
+            ))))
+        })),
+    );
+
     // I18n.default_locale() - The fallback locale.
     i18n_static_methods.insert(
         "default_locale".to_string(),
@@ -406,6 +494,27 @@ pub fn register_i18n_class(env: &mut Environment) {
                 get_locale().into()
             };
 
+            // The application's `number.separator` / `number.delimiter` win
+            // (a new locale, or another convention for a built-in one).
+            let separator = helpers::locale_setting(&locale, "number.separator");
+            let delimiter = helpers::locale_setting(&locale, "number.delimiter");
+            if separator.is_some() || delimiter.is_some() {
+                let text = format!("{}", n);
+                let (int_part, frac_part) = match text.split_once('.') {
+                    Some((i, f)) => (i.to_string(), Some(f.to_string())),
+                    None => (text, None),
+                };
+                let int_part = match &delimiter {
+                    Some(d) => helpers::group_digits(&int_part, d),
+                    None => int_part,
+                };
+                let formatted = match frac_part {
+                    Some(f) => format!("{int_part}{}{f}", separator.as_deref().unwrap_or(".")),
+                    None => int_part,
+                };
+                return Ok(Value::String(formatted.into()));
+            }
+
             let formatted = match locale.as_ref() {
                 "fr" | "de" | "es" | "it" => {
                     // Use comma as decimal separator
@@ -457,10 +566,21 @@ pub fn register_i18n_class(env: &mut Environment) {
                 _ => &currency,
             };
 
-            let (decimal_sep, thousands_sep, symbol_after) = match locale.as_ref() {
+            let (builtin_decimal, builtin_thousands, builtin_after) = match locale.as_ref() {
                 "fr" | "de" | "es" | "it" => (",", ".", true),
                 _ => (".", ",", false), // default for "en" and others
             };
+            // The application's `number.currency.*`, then `number.*`, win.
+            let setting = |key: &str| {
+                helpers::locale_setting(&locale, &format!("number.currency.{key}"))
+                    .or_else(|| helpers::locale_setting(&locale, &format!("number.{key}")))
+            };
+            let decimal_owned = setting("separator");
+            let thousands_owned = setting("delimiter");
+            let currency_format = helpers::locale_setting(&locale, "number.currency.format");
+            let decimal_sep = decimal_owned.as_deref().unwrap_or(builtin_decimal);
+            let thousands_sep = thousands_owned.as_deref().unwrap_or(builtin_thousands);
+            let symbol_after = builtin_after;
 
             // Round to total cents first so the integer and fractional parts
             // can't desync. Computing them independently caused a carry bug:
@@ -487,7 +607,16 @@ pub fn register_i18n_class(env: &mut Environment) {
             } else {
                 formatted_int
             };
-            let result = if symbol_after {
+            let result = if let Some(template) = currency_format {
+                // `"{amount} {unit}"`, `"{unit}{amount}"`, …
+                helpers::interpolate(
+                    &template,
+                    &[
+                        ("amount".to_string(), number),
+                        ("unit".to_string(), symbol.to_string()),
+                    ],
+                )
+            } else if symbol_after {
                 format!("{} {}", number, symbol)
             } else {
                 format!("{}{}", symbol, number)
@@ -520,6 +649,18 @@ pub fn register_i18n_class(env: &mut Environment) {
                 None => return Err("Invalid timestamp".to_string()),
             };
             let local = dt.with_timezone(&chrono::Local);
+
+            // The application's `date.format` (strftime: `"%d-%m-%Y"`) wins.
+            if let Some(pattern) = helpers::locale_setting(&locale, "date.format") {
+                use std::fmt::Write as _;
+                let mut out = String::new();
+                if write!(out, "{}", local.format(&pattern)).is_err() {
+                    return Err(format!(
+                        "I18n.format_date: date.format \"{pattern}\" of \"{locale}\" is not a valid pattern"
+                    ));
+                }
+                return Ok(Value::String(out.into()));
+            }
 
             use chrono::Datelike;
             let formatted = match locale.as_ref() {

@@ -206,6 +206,67 @@ pub(super) fn register(native_static_methods: &mut HashMap<String, Rc<NativeFunc
     // Translation DSL: translate("field1", "field2", ...)
     // ====================================================================
 
+    // Model.human_name / Model.human_name(count) — the model's name in the
+    // current locale (`models.<model>.name`, pluralized), else the class
+    // name read as words.
+    native_static_methods.insert(
+        "human_name".to_string(),
+        Rc::new(NativeFunction::new_auto_invocable(
+            "Model.human_name",
+            None,
+            |args| {
+                let class_name = get_class_name_from_class(args)?;
+                let count = match args.get(1) {
+                    None | Some(Value::Null) => None,
+                    Some(Value::Int(n)) => Some(*n),
+                    Some(other) => {
+                        return Err(format!(
+                            "human_name(count) expects an Int, got {}",
+                            other.type_name()
+                        ))
+                    }
+                };
+                Ok(Value::String(
+                    crate::interpreter::builtins::i18n::helpers::human_model_name(
+                        &class_name,
+                        count,
+                    )
+                    .into(),
+                ))
+            },
+        )),
+    );
+
+    // Model.human_attribute_name("title") — the field's name in the current
+    // locale (`models.<model>.attributes.<field>`), else the field read as
+    // words ("first_name" → "First name").
+    native_static_methods.insert(
+        "human_attribute_name".to_string(),
+        Rc::new(NativeFunction::new(
+            "Model.human_attribute_name",
+            Some(2),
+            |args| {
+                let class_name = get_class_name_from_class(args)?;
+                let field = match &args[1] {
+                    Value::String(s) | Value::Symbol(s) => s.to_string(),
+                    other => {
+                        return Err(format!(
+                            "human_attribute_name(field) expects a field name, got {}",
+                            other.type_name()
+                        ))
+                    }
+                };
+                Ok(Value::String(
+                    crate::interpreter::builtins::i18n::helpers::human_attribute_name(
+                        Some(&class_name),
+                        &field,
+                    )
+                    .into(),
+                ))
+            },
+        )),
+    );
+
     // Model.translate("title", "description") - declare translatable fields
     native_static_methods.insert(
         "translate".to_string(),

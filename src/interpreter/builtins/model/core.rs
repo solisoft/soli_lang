@@ -1971,6 +1971,26 @@ pub(super) fn apply_hash_to_instance(
     inst: &Rc<RefCell<crate::interpreter::value::Instance>>,
     hash: &Value,
 ) -> Result<(), String> {
+    assign_attributes(inst, hash, true)
+}
+
+/// What `Model.create(attrs)` puts on the instance it builds: the attributes
+/// as given, a translated field into its column — the record's own
+/// language, which every locale without a translation reads.
+pub(super) fn seed_instance_attributes(
+    inst: &Rc<RefCell<crate::interpreter::value::Instance>>,
+    hash: &Value,
+) -> Result<(), String> {
+    assign_attributes(inst, hash, false)
+}
+
+/// Apply an attributes hash. `in_locale` writes a translated field in the
+/// request's locale (`update` / `save(hash)`); otherwise into its column.
+fn assign_attributes(
+    inst: &Rc<RefCell<crate::interpreter::value::Instance>>,
+    hash: &Value,
+    in_locale: bool,
+) -> Result<(), String> {
     use crate::interpreter::value::HashKey;
     if !matches!(hash, Value::Hash(_)) {
         return Err(format!(
@@ -1991,11 +2011,27 @@ pub(super) fn apply_hash_to_instance(
     // a record into another, possibly privileged, subclass).
     let sti =
         super::registry::is_sti_subclass(&class_name) || super::registry::is_sti_base(&class_name);
+    // A translated field is written in the request's locale, as an
+    // assignment is (`record.update({"title": "Bonjour"})` ≡ `record.title =
+    // "Bonjour"`), and a `translated_fields` hash — a form's per-locale fields
+    // — is merged locale by locale instead of replacing the stored one.
+    let translated = in_locale && !super::get_translated_fields(&class_name).is_empty();
+    let locale = crate::interpreter::builtins::i18n::helpers::get_locale();
     let mut inst_mut = inst.borrow_mut();
     for (k, v) in pairs.borrow().iter() {
         if let HashKey::String(field) = k {
             if field.starts_with('_') || (sti && **field == *"type") {
                 continue;
+            }
+            if translated {
+                if **field == *"translated_fields" {
+                    super::translated::stage_translations_hash(&mut inst_mut, &class_name, v);
+                    continue;
+                }
+                if super::is_translated_field(&class_name, field) {
+                    super::translated::stage_translation(&mut inst_mut, field, &locale, v.clone());
+                    continue;
+                }
             }
             inst_mut.set(field.clone().to_string(), v.clone());
         }
@@ -2013,7 +2049,8 @@ pub(super) fn apply_hash_to_instance(
 pub(super) fn build_persistence_errors(class_name: &str, err: String) -> Vec<Value> {
     // SoliDB's foreign key violation is a 409 as a duplicate is: it used to
     // be reported as "has already been taken".
-    if let Some(error) = super::validation::solidb_foreign_key_error(&err) {
+    if let Some(mut error) = super::validation::solidb_foreign_key_error(&err) {
+        error.localize(class_name);
         return vec![error.to_value()];
     }
     if super::validation::is_unique_violation(&err) {
@@ -2024,8 +2061,14 @@ pub(super) fn build_persistence_errors(class_name: &str, err: String) -> Vec<Val
     }
     // A foreign-key or NOT NULL violation is just as much a validation failure
     // as a duplicate: the caller wants the field, not the driver's sentence.
-    if let Some(errors) = super::validation::build_constraint_errors(&err) {
-        return errors.iter().map(|v| v.to_value()).collect();
+    if let Some(mut errors) = super::validation::build_constraint_errors(&err) {
+        return errors
+            .iter_mut()
+            .map(|error| {
+                error.localize(class_name);
+                error.to_value()
+            })
+            .collect();
     }
     vec![Value::String(err.into())]
 }

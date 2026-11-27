@@ -81,10 +81,38 @@ print(doc.title, show(doc))
 fresh = Doc.new({"title": "Hello"})
 fresh.title = "Salut"
 fresh.retitle("Coucou")
+print(fresh.title, show(fresh))
 I18n.set_locale("en")
 print(show(fresh), fresh._pending_translations)
 "##,
-        "Bonjour Bonjour\nHello {title => Coucou}\n",
+        "Bonjour Bonjour\nCoucou Coucou\nHello {title => {fr => Coucou}}\n",
+    );
+}
+
+#[test]
+fn translate_in_a_model_body_declares_translated_fields() {
+    // Tree-walker only: the VM compiler hands any class with body DSL calls
+    // (`validates`, `belongs_to`, …) to the interpreter, as `soli serve` does.
+    let source = r##"class Page < Model
+  translate "title", :body
+  validates("title", {"presence": true})
+end
+class Note < Model
+  translates("title")
+end
+page = Page.new({"title": "Hello", "body": "Text"})
+I18n.set_locale("fr")
+page.title = "Bonjour"
+page.body = "Texte"
+note = Note.new({"title": "Hi"})
+note.title = "Salut"
+print(page.title, page.body, note.title)
+I18n.set_locale("en")
+print(page.title, page.body, note.title)
+"##;
+    assert_eq!(
+        run("--tree", source),
+        "Bonjour Texte Salut\nHello Text Hi\n"
     );
 }
 

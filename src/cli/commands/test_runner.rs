@@ -612,6 +612,14 @@ pub fn run_test(
         solilang::debug::session::exit(1);
     }
 
+    // The application's `config/locales/*.yml`, as `soli serve` loads them:
+    // without them a model spec saw Soli's built-in validation messages and
+    // never the application's own (`errors.messages.*`, `models.*`), nor
+    // what `I18n.translate` reads in a spec.
+    solilang::interpreter::builtins::i18n::helpers::load_locales_from_config_dir(
+        &app_dir.join("config"),
+    );
+
     let env_test_path = app_dir.join(".env.test");
     if !env_test_path.exists() {
         eprintln!(

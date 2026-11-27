@@ -339,6 +339,17 @@ pub(crate) enum UploaderMethod {
     Urls,
 }
 
+/// `hash[key]` when `hash` is a Hash holding that string key.
+fn hash_at(hash: &Value, key: &str) -> Option<Value> {
+    match hash {
+        Value::Hash(pairs) => pairs
+            .borrow()
+            .get(&crate::interpreter::value::HashKey::String(key.into()))
+            .cloned(),
+        _ => None,
+    }
+}
+
 pub(crate) fn parse_uploader_method_name(name: &str) -> Option<(UploaderMethod, &str)> {
     if let Some(field) = name.strip_prefix("attach_") {
         return Some((UploaderMethod::Attach, field));
@@ -1785,30 +1796,26 @@ impl Interpreter {
         }
 
         // Check if this is a translated field
-        #[allow(clippy::collapsible_match)]
         let inst_ref = inst.borrow();
         if inst_ref.class.is_model_subclass() {
             let class_name = &inst_ref.class.name;
             if is_translated_field(class_name, name) {
                 let locale = i18n_helpers::get_locale();
 
-                // Look up in translated_fields.{field_name}.{locale}
-                if let Some(translated_fields) = inst_ref.get("translated_fields") {
-                    if let Value::Hash(tf_hash) = translated_fields {
-                        let tf_ref = tf_hash.borrow();
-                        if let Some(field_translations) = tf_ref.get(
-                            &crate::interpreter::value::HashKey::String(name.to_string().into()),
-                        ) {
-                            if let Value::Hash(locale_hash) = field_translations {
-                                let locale_ref = locale_hash.borrow();
-                                if let Some(translated_value) =
-                                    locale_ref.get(&crate::interpreter::value::HashKey::String(
-                                        locale.clone().into(),
-                                    ))
-                                {
-                                    return Ok(translated_value.clone());
-                                }
-                            }
+                // A write not yet saved (`_pending_translations`), then the
+                // stored one (`translated_fields`), each at
+                // `{field_name}.{locale}`: `post.title = "x"` reads back as
+                // "x" in that locale before `save`.
+                // Along the locale's regional chain (`fr-CA`, its declared
+                // fallbacks, `fr`), before the column.
+                for candidate in i18n_helpers::regional_chain(&locale) {
+                    for source in ["_pending_translations", "translated_fields"] {
+                        if let Some(found) = inst_ref
+                            .get(source)
+                            .and_then(|by_field| hash_at(&by_field, name))
+                            .and_then(|by_locale| hash_at(&by_locale, &candidate))
+                        {
+                            return Ok(found);
                         }
                     }
                 }
@@ -2616,6 +2623,7 @@ impl Interpreter {
         // Handle QueryBuilder methods for chaining
         match name {
             "where" | "order" | "reorder" | "limit" | "offset" | "timeout" | "includes" | "includes_count" | "join" | "select" | "fields"
+            | "where_translated" | "order_translated"
             | "all" | "first" | "count" | "paginate" | "create" | "delete_all" | "update_all" | "to_query" | "is_a?" | "pluck" | "sum"
             | "avg" | "min" | "max" | "group_by" | "time_bucket" | "similar"
             | "aggregate" | "having" | "median" | "stddev" | "variance" | "count_distinct"

@@ -116,9 +116,10 @@
                     <tr><td class="px-4 py-3"><code class="text-amber-300">f.check_box("published")</code></td><td class="px-4 py-3">checkbox, <code>value="true"</code>, checked when the field is <code>true</code>/<code>"true"</code></td></tr>
                     <tr><td class="px-4 py-3"><code class="text-amber-300">f.radio_button("size", "xl")</code></td><td class="px-4 py-3">radio, checked when the field equals the value</td></tr>
                     <tr><td class="px-4 py-3"><code class="text-amber-300">f.select("status", choices)</code></td><td class="px-4 py-3"><code>&lt;select&gt;</code> — strings or <code>[label, value]</code> pairs, current value <code>selected</code></td></tr>
-                    <tr><td class="px-4 py-3"><code class="text-amber-300">f.label("title", text?, opts?)</code></td><td class="px-4 py-3"><code>&lt;label&gt;</code> — text defaults to a humanized field name</td></tr>
+                    <tr><td class="px-4 py-3"><code class="text-amber-300">f.label("title", text?, opts?)</code></td><td class="px-4 py-3"><code>&lt;label&gt;</code> — text defaults to the field&rsquo;s translated name (<code>models.&lt;model&gt;.attributes.title</code>), else a humanized field name; <code>{"locale": "fr"}</code> targets <code>title_fr</code></td></tr>
                     <tr><td class="px-4 py-3"><code class="text-amber-300">f.submit("Save", opts?)</code></td><td class="px-4 py-3"><code>&lt;button type="submit"&gt;</code></td></tr>
-                    <tr><td class="px-4 py-3"><code class="text-amber-300">f.error_summary(opts?) / f.errors_for(field)</code></td><td class="px-4 py-3">validation-error list / inline per-field messages (empty when valid)</td></tr>
+                    <tr><td class="px-4 py-3"><code class="text-amber-300">f.text_field("title", {"locale": "fr"})</code></td><td class="px-4 py-3">one locale of a model&rsquo;s <a href="/docs/core-concepts/i18n#translated-model-fields" class="text-amber-400 hover:underline">translated field</a>: named <code>translated_fields[title][fr]</code>, id <code>title_fr</code>, filled with that translation (any field helper)</td></tr>
+                    <tr><td class="px-4 py-3"><code class="text-amber-300">f.error_summary(opts?) / f.errors_for(field)</code></td><td class="px-4 py-3">every error as a sentence naming its field, in the request&rsquo;s locale (&ldquo;Title can&rsquo;t be blank&rdquo;) / inline per-field messages (empty when valid)</td></tr>
                 </tbody>
             </table>
         </div>
@@ -216,7 +217,7 @@
             Validation errors &amp; partials
         </h2>
         <p class="text-gray-400 mb-6">
-            A failed <code class="text-amber-300">create</code>/<code class="text-amber-300">save</code> leaves <code class="text-amber-300">_errors</code> on the record — re-render the form and the builder does the rest: <code class="text-amber-300">f.error_summary()</code> lists every message, <code class="text-amber-300">f.errors_for("title")</code> renders inline spans, and errored fields get the <code class="text-amber-300">field-error</code> class. Partials render in a fresh scope, so pass the builder explicitly:
+            A failed <code class="text-amber-300">create</code>/<code class="text-amber-300">save</code> leaves <code class="text-amber-300">_errors</code> on the record — re-render the form and the builder does the rest: <code class="text-amber-300">f.error_summary()</code> lists every error as a sentence naming its field (translated, see <a href="/docs/core-concepts/i18n#model-and-attribute-names" class="text-amber-400 hover:underline">I18n</a>), <code class="text-amber-300">f.errors_for("title")</code> renders inline spans, and errored fields get the <code class="text-amber-300">field-error</code> class. Partials render in a fresh scope, so pass the builder explicitly:
         </p>
         <div class="rounded-xl overflow-hidden bg-[#1e1e1e] border border-white/10 shadow-2xl">
             <div class="p-6 overflow-x-auto">

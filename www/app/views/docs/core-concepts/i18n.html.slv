@@ -219,7 +219,7 @@ dt.format("%A %d %B %Y", "es")   # "miércoles 06 marzo 2024"
         </div>
     </div>
 
-    <p class="text-gray-400 mb-6">Under <code class="text-cyan-400">soli serve --dev</code> an edit to one of these files &mdash; a new key, a new locale file, even a <code class="text-cyan-400">config/locales/</code> directory created after boot &mdash; is picked up on save, with no restart: the workers reload the translations and the browser reloads the page. In production they are read once, at boot.</p>
+    <p class="text-gray-400 mb-6">Under <code class="text-cyan-400">soli serve --dev</code> an edit to one of these files &mdash; a new key, a new locale file, even a <code class="text-cyan-400">config/locales/</code> directory created after boot &mdash; is picked up on save, with no restart: the workers reload the translations and the browser reloads the page. In production they are read once, at boot. <code class="text-cyan-400">soli test</code> loads them too, so a spec sees the application&rsquo;s messages and names.</p>
 
     <p class="text-gray-400 mb-6">A JSON file works too, loaded by hand and passed as the translations hash:</p>
 
@@ -255,6 +255,227 @@ greeting = I18n.translate("nav.home", "en", all_translations)
 print(greeting);  # "Home"</code></pre>
         </div>
     </div>
+
+    <h2 id="fallbacks" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Fallbacks between locales</h2>
+    <p class="text-gray-400 mb-6">A key missing in the request&rsquo;s locale is looked up along a chain: the locale, the fallbacks you declare for it, its base language (<code class="text-cyan-400">fr-CA</code> &rarr; <code class="text-cyan-400">fr</code>), the default locale, then English. <code class="text-cyan-400">I18n.translate</code>, <code class="text-cyan-400">I18n.plural</code>, the validation messages and the model and attribute names all follow it.</p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">I18n.set_fallbacks({"ca": ["es"], "pt-BR": "pt"})   # per application
+I18n.locale_chain("ca")                             # ["ca", "es", "en"]
+I18n.fallbacks()                                    # {ca =&gt; [es], pt-BR =&gt; [pt]}</code></pre>
+        </div>
+    </div>
+    <p class="text-gray-400 mb-12">Call <code class="text-cyan-400">I18n.set_fallbacks</code> once, at boot (an initializer, or the top of <code class="text-cyan-400">config/routes.sl</code>). It replaces what was declared before.</p>
+    <h2 id="validation-messages" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Validation messages</h2>
+    <p class="text-gray-400 mb-6">A model&rsquo;s validation errors read in the request&rsquo;s locale. Soli ships the messages for <code class="text-cyan-400">en</code>, <code class="text-cyan-400">fr</code>, <code class="text-cyan-400">de</code>, <code class="text-cyan-400">es</code>, <code class="text-cyan-400">it</code> and <code class="text-cyan-400">pt</code>; an application with no locale file gets them as they are:</p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">I18n.set_locale("fr")
+post = Post.new({"title": ""})
+post.save
+post._errors        # [{field =&gt; title, message =&gt; doit être rempli(e)}]
+post.full_messages  # ["Title doit être rempli(e)"]</code></pre>
+        </div>
+    </div>
+    <p class="text-gray-400 mb-4">Each message has a code. Its sentence is looked up, in each locale of the chain, under these keys &mdash; the first one found wins:</p>
+    <ol class="list-decimal list-inside space-y-2 text-gray-400 text-sm mb-6">
+        <li><code class="text-cyan-400">models.&lt;model&gt;.errors.attributes.&lt;field&gt;.&lt;code&gt;</code> &mdash; one field of one model</li>
+        <li><code class="text-cyan-400">models.&lt;model&gt;.errors.&lt;code&gt;</code> &mdash; every field of one model</li>
+        <li><code class="text-cyan-400">errors.messages.&lt;code&gt;</code> &mdash; in your <code class="text-cyan-400">config/locales/*.yml</code></li>
+        <li><code class="text-cyan-400">errors.messages.&lt;code&gt;</code> &mdash; in the messages Soli ships</li>
+    </ol>
+    <p class="text-gray-400 mb-6"><code class="text-cyan-400">&lt;model&gt;</code> is the class name in snake case (<code class="text-cyan-400">BlogPost</code> &rarr; <code class="text-cyan-400">blog_post</code>, <code class="text-cyan-400">Admin::User</code> &rarr; <code class="text-cyan-400">admin/user</code>).</p>
+    <div class="overflow-x-auto mb-6">
+        <table class="w-full text-sm">
+            <thead><tr class="border-b border-white/10"><th class="text-left py-2 px-3 text-white">Code</th><th class="text-left py-2 px-3 text-white">English</th><th class="text-left py-2 px-3 text-white">From</th></tr></thead>
+            <tbody>
+                <tr class="border-b border-white/5"><td class="py-2 px-3"><code class="text-cyan-400">blank</code></td><td class="py-2 px-3 text-gray-400">can&#x27;t be blank</td><td class="py-2 px-3 text-gray-400">presence, a NOT NULL column</td></tr>
+                <tr class="border-b border-white/5"><td class="py-2 px-3"><code class="text-cyan-400">taken</code></td><td class="py-2 px-3 text-gray-400">has already been taken</td><td class="py-2 px-3 text-gray-400">uniqueness, a unique index</td></tr>
+                <tr class="border-b border-white/5"><td class="py-2 px-3"><code class="text-cyan-400">invalid</code></td><td class="py-2 px-3 text-gray-400">is invalid</td><td class="py-2 px-3 text-gray-400">format, a custom validator returning false</td></tr>
+                <tr class="border-b border-white/5"><td class="py-2 px-3"><code class="text-cyan-400">not_a_number</code></td><td class="py-2 px-3 text-gray-400">is not a number</td><td class="py-2 px-3 text-gray-400">numericality</td></tr>
+                <tr class="border-b border-white/5"><td class="py-2 px-3"><code class="text-cyan-400">too_short</code></td><td class="py-2 px-3 text-gray-400">is too short (minimum is {count} characters)</td><td class="py-2 px-3 text-gray-400">min_length</td></tr>
+                <tr class="border-b border-white/5"><td class="py-2 px-3"><code class="text-cyan-400">too_long</code></td><td class="py-2 px-3 text-gray-400">is too long (maximum is {count} characters)</td><td class="py-2 px-3 text-gray-400">max_length</td></tr>
+                <tr class="border-b border-white/5"><td class="py-2 px-3"><code class="text-cyan-400">greater_than_or_equal_to</code></td><td class="py-2 px-3 text-gray-400">must be greater than or equal to {count}</td><td class="py-2 px-3 text-gray-400">min</td></tr>
+                <tr class="border-b border-white/5"><td class="py-2 px-3"><code class="text-cyan-400">less_than_or_equal_to</code></td><td class="py-2 px-3 text-gray-400">must be less than or equal to {count}</td><td class="py-2 px-3 text-gray-400">max</td></tr>
+                <tr class="border-b border-white/5"><td class="py-2 px-3"><code class="text-cyan-400">inclusion</code></td><td class="py-2 px-3 text-gray-400">is not included in the list</td><td class="py-2 px-3 text-gray-400">inclusion / one_of</td></tr>
+                <tr class="border-b border-white/5"><td class="py-2 px-3"><code class="text-cyan-400">wrong_type</code></td><td class="py-2 px-3 text-gray-400">must be {type}</td><td class="py-2 px-3 text-gray-400">type: — {type} reads errors.types.&lt;type&gt;</td></tr>
+                <tr class="border-b border-white/5"><td class="py-2 px-3"><code class="text-cyan-400">value_object / value_object_list</code></td><td class="py-2 px-3 text-gray-400">must be a {class} / must be a list of {class}</td><td class="py-2 px-3 text-gray-400">value_field</td></tr>
+                <tr class="border-b border-white/5"><td class="py-2 px-3"><code class="text-cyan-400">foreign_key</code></td><td class="py-2 px-3 text-gray-400">must reference an existing record</td><td class="py-2 px-3 text-gray-400">a foreign key</td></tr>
+                <tr class="border-b border-white/5"><td class="py-2 px-3"><code class="text-cyan-400">still_referenced</code></td><td class="py-2 px-3 text-gray-400">is still referenced by other records</td><td class="py-2 px-3 text-gray-400">a restricted delete</td></tr>
+                <tr class="border-b border-white/5"><td class="py-2 px-3"><code class="text-cyan-400">stale</code></td><td class="py-2 px-3 text-gray-400">is stale: the record was changed since it was read — reload it and try again</td><td class="py-2 px-3 text-gray-400">optimistic_lock</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <p class="text-gray-400 mb-12"><code class="text-cyan-400">too_short</code> and <code class="text-cyan-400">too_long</code> are plural keys (<code class="text-cyan-400">too_short_one</code>, <code class="text-cyan-400">too_short_other</code>, &hellip;, chosen by the CLDR rules of the locale); a plain <code class="text-cyan-400">too_short</code> key is used for every count when you write one.</p>
+    <h3 id="overriding-messages" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Overriding a message, adding a language</h3>
+    <p class="text-gray-400 mb-6">Your locale files sit on top of the shipped messages, key by key. Write only what you change:</p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">config/locales/fr.yml</label>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-yaml text-sm">fr:
+  errors:
+    messages:
+      blank: "est obligatoire"          # every model
+  models:
+    blog_post:
+      errors:
+        taken: "existe déjà"            # every field of BlogPost
+        attributes:
+          slug:
+            taken: "est pris par un autre article"</code></pre>
+        </div>
+    </div>
+    <p class="text-gray-400 mb-6">A language Soli does not ship works as soon as a file declares it. A code the file leaves out falls back along the chain, then to English, never to nothing:</p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">config/locales/nl.yml</label>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-yaml text-sm">nl:
+  errors:
+    messages:
+      blank: "moet opgegeven zijn"
+      too_short_one: "is te kort (minimaal {count} teken)"
+      too_short_other: "is te kort (minimaal {count} tekens)"</code></pre>
+        </div>
+    </div>
+    <p class="text-gray-400 mb-6"><code class="text-cyan-400">soli i18n:export fr</code> writes the shipped French messages to <code class="text-cyan-400">config/locales/soli.fr.yml</code> as a starting point, and <code class="text-cyan-400">soli i18n:missing nl</code> lists the keys <code class="text-cyan-400">nl</code> still lacks against your default locale (<code class="text-cyan-400">--from en</code> to choose), exiting 1 when something is missing:</p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-12">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-bash text-sm">soli i18n:export fr              # config/locales/soli.fr.yml (--force to overwrite)
+soli i18n:missing nl             # nl: 3 of 25 keys of en missing …
+soli i18n:missing de --from fr</code></pre>
+        </div>
+    </div>
+    <h3 id="custom-messages" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Your own messages</h3>
+    <p class="text-gray-400 mb-6"><code class="text-cyan-400">message:</code> replaces what a rule says. A String is the sentence in every locale; a Symbol is a key, looked up like a code:</p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">class Post &lt; Model
+  validates("slug", {"format": "^[a-z-]+$", "message": :slug_format})
+  validates("code", {"format": "^[A-Z]+$", "message": "must be upper case"})
+end</code></pre>
+        </div>
+    </div>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-yaml text-sm">fr:
+  errors:
+    messages:
+      slug_format: "ne doit contenir que des minuscules et des tirets"</code></pre>
+        </div>
+    </div>
+    <p class="text-gray-400 mb-12">A custom validator may return a Symbol too (<code class="text-cyan-400">return :too_big if size &gt; 10</code>), or push <code class="text-cyan-400">{"field": "size", "message": :too_big}</code> onto <code class="text-cyan-400">@_errors</code>. A key nothing translates shows as the key itself, so the gap is visible. <code class="text-cyan-400">I18n.translate("errors.messages.taken", "de")</code> reads the shipped messages as well.</p>
+    <h2 id="model-and-attribute-names" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Model and attribute names</h2>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">config/locales/fr.yml</label>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-yaml text-sm">fr:
+  models:
+    blog_post:
+      name_one: "Article"
+      name_other: "Articles"
+      attributes:
+        title: "Titre"</code></pre>
+        </div>
+    </div>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">BlogPost.human_name                      # "Article" ("Blog post" with no key)
+BlogPost.human_name(3)                   # "Articles"
+BlogPost.human_attribute_name("title")   # "Titre" ("Title" with no key)
+post.full_messages                       # ["Titre doit être rempli(e)", …]</code></pre>
+        </div>
+    </div>
+    <p class="text-gray-400 mb-12"><code class="text-cyan-400">full_messages</code> joins the name and the message with <code class="text-cyan-400">errors.format</code> (<code class="text-cyan-400">"{attribute} {message}"</code> in every shipped locale); an error on <code class="text-cyan-400">_base</code> is its message alone. The form builder uses both: <code class="text-cyan-400">f.label("title")</code> reads the translated name when the form&rsquo;s record is a model, and <code class="text-cyan-400">f.error_summary()</code> lists the full messages &mdash; &ldquo;Title can&rsquo;t be blank&rdquo; rather than &ldquo;can&rsquo;t be blank&rdquo;.</p>
+    <h2 id="translated-model-fields" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Translated model fields</h2>
+    <p class="text-gray-400 mb-6">A model field can hold one value per locale. Declare it in the class body with <code class="text-cyan-400">translate</code> (or <code class="text-cyan-400">translates</code>, the Globalize/Mobility spelling), and the field reads and writes in the request&rsquo;s locale. <code class="text-cyan-400">Article.translate("title", "body")</code> after the class does the same.</p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">app/models/article.sl</label>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">class Article &lt; Model
+  translate "title", "body"
+end
+
+article = Article.create({"title": "Hello", "body": "Text"})
+
+I18n.set_locale("fr")
+article.title                 # "Hello" — no French yet, the column answers
+article.title = "Bonjour"
+article.title                 # "Bonjour" — read back before save
+article.save
+
+I18n.set_locale("de")
+Article.find(article._key).title   # "Hello"
+I18n.set_locale("fr")
+Article.find(article._key).title   # "Bonjour"</code></pre>
+        </div>
+    </div>
+    <p class="text-gray-400 mb-4">Where the values live:</p>
+    <ul class="list-disc list-inside text-gray-400 mb-6 space-y-2">
+        <li><strong class="text-white">The column</strong> (<code class="text-cyan-400">title</code>) keeps what <code class="text-cyan-400">create</code> / <code class="text-cyan-400">new</code> were given. It is the fallback: a locale with no translation reads it.</li>
+        <li><strong class="text-white"><code class="text-cyan-400">translated_fields</code></strong> holds the rest, as <code class="text-cyan-400">{"title": {"fr": "Bonjour", "es": "Hola"}}</code>, in the same document. A <code class="text-cyan-400">create</code> can seed it directly.</li>
+        <li><strong class="text-white">A write</strong> &mdash; <code class="text-cyan-400">article.title = …</code>, <code class="text-cyan-400">@title = …</code> in a method, <code class="text-cyan-400">article.update({"title": …})</code>, <code class="text-cyan-400">article.save({"title": …})</code> &mdash; is staged under the locale active <em>when you write</em>, and <code class="text-cyan-400">save</code> / <code class="text-cyan-400">update</code> merge it into <code class="text-cyan-400">translated_fields</code>, keeping the other locales already stored. It does not overwrite the column, even in the default locale.</li>
+    </ul>
+    <p class="text-gray-400 mb-12">A read looks along the locale&rsquo;s regional chain &mdash; the locale, its declared fallbacks, its base language (<code class="text-cyan-400">fr-CA</code> &rarr; <code class="text-cyan-400">fr</code>) &mdash; for a staged value, then a stored one, and then reads the column. The default locale is not part of that chain: the column already holds the record&rsquo;s own language.</p>
+    <h3 id="several-locales" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Reading and writing several locales</h3>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">article.translation("title", "fr")         # "Bonjour" — that locale only, nil if none
+article.translations("title")              # {fr =&gt; Bonjour, es =&gt; Hola}
+article.set_translation("title", "de", "Hallo")   # staged; save writes it</code></pre>
+        </div>
+    </div>
+    <p class="text-gray-400 mb-6">A form can edit several locales at once. <code class="text-cyan-400">{"locale": "fr"}</code> on a field names it <code class="text-cyan-400">translated_fields[title][fr]</code> and fills it with that translation; <code class="text-cyan-400">update(params)</code> merges the hash it produces locale by locale:</p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-erb text-sm">&lt;%- f.label("title", "Titre", {"locale": "fr"}) %&gt;
+&lt;%- f.text_field("title", {"locale": "fr"}) %&gt;
+&lt;%- f.text_field("title", {"locale": "es"}) %&gt;</code></pre>
+        </div>
+    </div>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-12">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm"># PATCH /articles/:id
+def update(req)
+  @article = Article.find(params["id"])
+  locales = {"fr": true, "es": true}   # permit names each locale it lets through
+  @article.update(permit(params, {"translated_fields": {"title": locales}}))
+end</code></pre>
+        </div>
+    </div>
+    <h3 id="querying-translations" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Querying translations</h3>
+    <p class="text-gray-400 mb-6"><code class="text-cyan-400">where</code> compares the column. <code class="text-cyan-400">where_translated</code> compares what a reader in the current locale sees &mdash; the translation along the regional chain, else the column &mdash; and <code class="text-cyan-400">order_translated</code> sorts by it. Both chain like <code class="text-cyan-400">where</code> and <code class="text-cyan-400">order</code>:</p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">I18n.set_locale("fr")
+Article.where_translated({"title": "Bonjour"}).all
+Article.where({"published": true}).order_translated("title", "desc").limit(10).all
+Article.missing_translations("es").all   # records lacking es for a translated field</code></pre>
+        </div>
+    </div>
+    <p class="text-gray-400 mb-12">These three are SoliDB-only: on the SQL adapters they are refused, as a raw string <code class="text-cyan-400">where</code> is. A path in a string filter reaches one locale directly: <code class="text-cyan-400">Article.where("doc.translated_fields.title.fr == @t", {"t": "Bonjour"})</code>.</p>
+    <h2 id="formats-from-locale-files" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Formats from your locale files</h2>
+    <p class="text-gray-400 mb-6">A locale file can set the number and date conventions of a language Soli does not format, or change those of one it does. Only the locale&rsquo;s own file (and its regional chain) is read &mdash; a format is never borrowed from the default locale:</p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <label class="block px-4 py-2 bg-white/5 text-xs text-gray-400 font-mono border-b border-white/5">config/locales/nl.yml</label>
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-yaml text-sm">nl:
+  number:
+    separator: ","          # decimal separator
+    delimiter: "."          # thousands
+    currency:
+      format: "{unit} {amount}"
+  date:
+    format: "%d-%m-%Y"      # strftime</code></pre>
+        </div>
+    </div>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">I18n.format_number(1234567.5, "nl")          # "1.234.567,5"
+I18n.format_currency(1999.99, "EUR", "nl")   # "€ 1.999,99"
+I18n.format_date(timestamp, "nl")            # "16-01-2026"</code></pre>
+        </div>
+    </div>
+    <p class="text-gray-400 mb-12"><code class="text-cyan-400">number.currency.separator</code> / <code class="text-cyan-400">.delimiter</code> override <code class="text-cyan-400">number.*</code> for amounts.</p>
 
     <h2 class="text-2xl font-bold text-white mb-6">Supported Locales</h2>
     <p class="text-gray-400 mb-6">The I18n class provides built-in formatting support for these locales:</p>
@@ -325,7 +546,7 @@ form based on count.</p>
         </div>
         <div class="p-4 rounded-xl bg-white/5 border border-white/10">
             <code class="text-orange-300 font-bold">I18n.format_number(n, locale?)</code>
-            <p class="text-sm text-gray-400 mt-2">Formats a number with the locale's decimal separator. No thousands grouping.</p>
+            <p class="text-sm text-gray-400 mt-2">Formats a number with the locale's decimal separator. No thousands grouping, unless the locale file sets <code>number.delimiter</code>.</p>
         </div>
         <div class="p-4 rounded-xl bg-white/5 border border-white/10">
             <code class="text-orange-300 font-bold">I18n.format_currency(amount, currency, locale?)</code>
@@ -333,7 +554,31 @@ form based on count.</p>
         </div>
         <div class="p-4 rounded-xl bg-white/5 border border-white/10">
             <code class="text-orange-300 font-bold">I18n.format_date(timestamp, locale?)</code>
-            <p class="text-sm text-gray-400 mt-2">Formats a Unix timestamp as a date string according to locale conventions.</p>
+            <p class="text-sm text-gray-400 mt-2">Formats a Unix timestamp as a date string according to locale conventions (<code>date.format</code> from the locale file when set).</p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <code class="text-orange-300 font-bold">I18n.set_fallbacks(hash) / I18n.fallbacks()</code>
+            <p class="text-sm text-gray-400 mt-2">The locales tried right after each one, per application.</p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <code class="text-orange-300 font-bold">I18n.locale_chain(locale?)</code>
+            <p class="text-sm text-gray-400 mt-2">The locales a lookup tries, in order.</p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <code class="text-orange-300 font-bold">Model.human_name(count?) / Model.human_attribute_name(field)</code>
+            <p class="text-sm text-gray-400 mt-2">The model&rsquo;s / field&rsquo;s name in the current locale, else read as words.</p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <code class="text-orange-300 font-bold">record.full_messages</code>
+            <p class="text-sm text-gray-400 mt-2">Each validation error as a sentence naming its field.</p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <code class="text-orange-300 font-bold">record.translation(field, locale) / translations(field) / set_translation(field, locale, value)</code>
+            <p class="text-sm text-gray-400 mt-2">One locale of a translated field / every locale / stage one.</p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <code class="text-orange-300 font-bold">Model.where_translated(hash) / order_translated(field, dir?) / missing_translations(locale)</code>
+            <p class="text-sm text-gray-400 mt-2">Queries on translated fields, as a reader in the locale sees them (SoliDB).</p>
         </div>
     </div>
 

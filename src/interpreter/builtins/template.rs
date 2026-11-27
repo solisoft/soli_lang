@@ -1101,6 +1101,107 @@ pub fn register_static_template_helpers(env: &mut Environment) {
         })),
     );
 
+    // __soli_human_attribute(record, field) — `label`'s caption: the field's
+    // translated name (`models.<model>.attributes.<field>`) when `record` is a
+    // model instance and a translation names it, else null (the builder then
+    // reads the field as words, as it always has).
+    env.define(
+        "__soli_human_attribute".to_string(),
+        Value::NativeFunction(NativeFunction::new(
+            "__soli_human_attribute",
+            Some(2),
+            |args| {
+                let Value::Instance(inst) = &args[0] else {
+                    return Ok(Value::Null);
+                };
+                let class = inst.borrow().class.clone();
+                if !class.is_model_subclass() {
+                    return Ok(Value::Null);
+                }
+                let Value::String(field) = &args[1] else {
+                    return Ok(Value::Null);
+                };
+                let named = crate::interpreter::builtins::i18n::helpers::human_attribute_name(
+                    Some(&class.name),
+                    field,
+                );
+                if named == crate::interpreter::builtins::i18n::helpers::humanize(field) {
+                    return Ok(Value::Null);
+                }
+                Ok(Value::String(named.into()))
+            },
+        )),
+    );
+
+    // __soli_translation(record, field, locale) — a per-locale form field's
+    // value: the record's translation of `field` in `locale` (staged, then
+    // stored), from a model instance or a hash's `translated_fields`.
+    env.define(
+        "__soli_translation".to_string(),
+        Value::NativeFunction(NativeFunction::new("__soli_translation", Some(3), |args| {
+            let (Value::String(field), Value::String(locale)) = (&args[1], &args[2]) else {
+                return Ok(Value::Null);
+            };
+            use crate::interpreter::builtins::model::translated::translation_in;
+            let found = match &args[0] {
+                Value::Instance(inst) => {
+                    let inst = inst.borrow();
+                    translation_in(inst.get("_pending_translations").as_ref(), field, locale)
+                        .or_else(|| {
+                            translation_in(inst.get("translated_fields").as_ref(), field, locale)
+                        })
+                }
+                Value::Hash(hash) => {
+                    let stored = hash
+                        .borrow()
+                        .get(&HashKey::String("translated_fields".into()))
+                        .cloned();
+                    translation_in(stored.as_ref(), field, locale)
+                }
+                _ => None,
+            };
+            Ok(found.unwrap_or(Value::Null))
+        })),
+    );
+
+    // __soli_full_messages(record) — `error_summary`'s lines: each of the
+    // record's `_errors` as a sentence naming its field, in the current
+    // locale ("Title can't be blank"). A hash record's fields read as words.
+    env.define(
+        "__soli_full_messages".to_string(),
+        Value::NativeFunction(NativeFunction::new(
+            "__soli_full_messages",
+            Some(1),
+            |args| {
+                let (class_name, errors) = match &args[0] {
+                    Value::Instance(inst) => {
+                        let inst = inst.borrow();
+                        let class_name = if inst.class.is_model_subclass() {
+                            inst.class.name.clone()
+                        } else {
+                            String::new()
+                        };
+                        (class_name, inst.get("_errors"))
+                    }
+                    Value::Hash(hash) => (
+                        String::new(),
+                        hash.borrow()
+                            .get(&HashKey::String("_errors".into()))
+                            .cloned(),
+                    ),
+                    _ => (String::new(), None),
+                };
+                let lines = crate::interpreter::builtins::model::full_messages_of(
+                    &class_name,
+                    errors.as_ref(),
+                );
+                Ok(Value::Array(Rc::new(RefCell::new(
+                    lines.into_iter().map(|l| Value::String(l.into())).collect(),
+                ))))
+            },
+        )),
+    );
+
     env.define(
         "range".to_string(),
         Value::NativeFunction(NativeFunction::new("range", None, |args| {

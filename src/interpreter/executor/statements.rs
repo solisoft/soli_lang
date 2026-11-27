@@ -1004,6 +1004,51 @@ impl Interpreter {
         Ok(())
     }
 
+    /// `translate "title", "body"` in a model's body: what
+    /// `Model.translate("title", "body")` registers.
+    fn declare_translated_fields(
+        &mut self,
+        class_rc: &Rc<Class>,
+        arguments: &[Argument],
+        span: crate::span::Span,
+    ) -> RuntimeResult<()> {
+        let mut fields = Vec::new();
+        for arg in arguments {
+            let value = match arg {
+                Argument::Positional(expr) => self.evaluate(expr)?,
+                _ => {
+                    return Err(RuntimeError::type_error(
+                        "translate takes field names, e.g. translate \"title\", \"body\"",
+                        span,
+                    ))
+                }
+            };
+            match value {
+                Value::String(s) => fields.push(s.to_string()),
+                Value::Symbol(s) => fields.push(s.to_string()),
+                other => {
+                    return Err(RuntimeError::type_error(
+                        format!(
+                            "translate expects field names (strings or symbols), got {}",
+                            other.type_name()
+                        ),
+                        span,
+                    ))
+                }
+            }
+        }
+        if fields.is_empty() {
+            return Err(RuntimeError::type_error(
+                "translate requires at least one field name",
+                span,
+            ));
+        }
+        for field in &fields {
+            crate::interpreter::builtins::model::register_translation(&class_rc.name, field);
+        }
+        Ok(())
+    }
+
     /// Run class-body DSL calls (`validates`, `has_many`, …) with the class
     /// prepended as the first argument — same dispatch as a Model class body.
     pub(crate) fn execute_class_level_calls(
@@ -1023,6 +1068,16 @@ impl Interpreter {
                     // plain native. Route it to `define_state_machine` and skip
                     // the generic class-statement dispatch below.
                     if let crate::ast::ExprKind::Variable(fname) = &callee.kind {
+                        // `translate "title", "body"` (or `translates`) —
+                        // declare translated fields. Handled here rather
+                        // than as a global native so no app-wide
+                        // `translate()` function shadows an app's own.
+                        if (fname == "translate" || fname == "translates")
+                            && class_rc.is_model_subclass()
+                        {
+                            self.declare_translated_fields(class_rc, arguments, stmt.span)?;
+                            continue;
+                        }
                         if fname == "state_machine" {
                             let block = arguments.iter().find_map(|a| match a {
                                 Argument::Block(e) => Some(e),

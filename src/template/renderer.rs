@@ -1478,8 +1478,8 @@ mod tests {
             "{}",
             html
         );
-        assert!(html.contains("<li>can be blank</li>"), "{}", html);
-        assert!(html.contains("<li>too short</li>"), "{}", html);
+        assert!(html.contains("<li>Title can be blank</li>"), "{}", html);
+        assert!(html.contains("<li>Body too short</li>"), "{}", html);
     }
 
     #[test]

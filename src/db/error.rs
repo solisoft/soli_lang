@@ -99,13 +99,14 @@ impl ConstraintKind {
         }
     }
 
-    /// The validation message a field error carries for this kind.
-    pub fn message(self) -> &'static str {
+    /// The validation error code a field error carries for this kind; its
+    /// message comes from the translations (`errors.messages.<code>`).
+    pub fn code(self) -> &'static str {
         match self {
-            ConstraintKind::Unique => "has already been taken",
-            ConstraintKind::ForeignKey => "must reference an existing record",
-            ConstraintKind::NotNull => "can't be blank",
-            ConstraintKind::Check => "is invalid",
+            ConstraintKind::Unique => "taken",
+            ConstraintKind::ForeignKey => "foreign_key",
+            ConstraintKind::NotNull => "blank",
+            ConstraintKind::Check => "invalid",
         }
     }
 }
@@ -266,9 +267,10 @@ mod constraint_tests {
     }
 
     #[test]
-    fn each_kind_carries_a_validation_message() {
-        assert_eq!(ConstraintKind::Unique.message(), "has already been taken");
-        assert_eq!(ConstraintKind::NotNull.message(), "can't be blank");
-        assert!(ConstraintKind::ForeignKey.message().contains("existing"));
+    fn each_kind_carries_a_validation_code() {
+        assert_eq!(ConstraintKind::Unique.code(), "taken");
+        assert_eq!(ConstraintKind::NotNull.code(), "blank");
+        assert_eq!(ConstraintKind::ForeignKey.code(), "foreign_key");
+        assert_eq!(ConstraintKind::Check.code(), "invalid");
     }
 }
