@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.43.0] - 2026-11-27
+
 ### Added
 - **Validation messages in six languages, overridable.** Built-in validation errors carry a code (`ValidationError::coded`: `blank`, `taken`, `invalid`, `not_a_number`, `too_short`, `too_long`, `greater_than_or_equal_to`, `less_than_or_equal_to`, `inclusion`, `wrong_type`, `value_object(_list)`, `foreign_key`, `still_referenced`, `stale`) and read it in the request's locale through `i18n::helpers::error_message`: `models.<model>.errors.attributes.<field>.<code>`, `models.<model>.errors.<code>`, `errors.messages.<code>` from the app's `config/locales`, then the catalog embedded from `src/interpreter/builtins/i18n/catalog/{en,fr,de,es,it,pt}.yml`, locale by locale along the chain. The catalog is kept out of the app's store so `Accept-Language` negotiation is unchanged. English text is unchanged (`wrong_type`'s article comes from `errors.types.<type>`; `too_short`/`too_long` now say "1 character" for a count of 1). `validates(…, {"message": "text" | :key})`; a custom validator may return a Symbol key. `ConstraintKind::message` became `code`. `I18n.translate` reads the catalog for keys the app lacks. The error hashes keep their `{field, message}` shape.
 - **`Model.human_name(count?)`, `Model.human_attribute_name(field)`, `record.full_messages`** (`models.<model>.name_one/_other`, `models.<model>.attributes.<field>`, `errors.format`). The form builder's `label` uses the translated name for a model record (`__soli_human_attribute`), and `error_summary` lists full messages (`__soli_full_messages`) — "Title can't be blank" instead of "can't be blank".
