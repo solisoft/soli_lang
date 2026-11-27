@@ -1975,8 +1975,9 @@ pub(super) fn apply_hash_to_instance(
 }
 
 /// What `Model.create(attrs)` puts on the instance it builds: the attributes
-/// as given, a translated field into its column — the record's own
-/// language, which every locale without a translation reads.
+/// as given, a translated field into its column — which every locale without
+/// a translation reads — and, outside the default locale, into that locale's
+/// translation too (see `translated::seed_translation`).
 pub(super) fn seed_instance_attributes(
     inst: &Rc<RefCell<crate::interpreter::value::Instance>>,
     hash: &Value,
@@ -1985,7 +1986,8 @@ pub(super) fn seed_instance_attributes(
 }
 
 /// Apply an attributes hash. `in_locale` writes a translated field in the
-/// request's locale (`update` / `save(hash)`); otherwise into its column.
+/// request's locale (`update` / `save(hash)`: the column for the default
+/// locale); otherwise it seeds it (`create` / `new`).
 fn assign_attributes(
     inst: &Rc<RefCell<crate::interpreter::value::Instance>>,
     hash: &Value,
@@ -2015,7 +2017,9 @@ fn assign_attributes(
     // assignment is (`record.update({"title": "Bonjour"})` ≡ `record.title =
     // "Bonjour"`), and a `translated_fields` hash — a form's per-locale fields
     // — is merged locale by locale instead of replacing the stored one.
-    let translated = in_locale && !super::get_translated_fields(&class_name).is_empty();
+    // Seeding (`create` / `new`), a translated field fills its column and,
+    // outside the default locale, that locale's translation as well.
+    let translated = !super::get_translated_fields(&class_name).is_empty();
     let locale = crate::interpreter::builtins::i18n::helpers::get_locale();
     let mut inst_mut = inst.borrow_mut();
     for (k, v) in pairs.borrow().iter() {
@@ -2024,12 +2028,26 @@ fn assign_attributes(
                 continue;
             }
             if translated {
-                if **field == *"translated_fields" {
+                if in_locale && **field == *"translated_fields" {
                     super::translated::stage_translations_hash(&mut inst_mut, &class_name, v);
                     continue;
                 }
                 if super::is_translated_field(&class_name, field) {
-                    super::translated::stage_translation(&mut inst_mut, field, &locale, v.clone());
+                    if in_locale {
+                        super::translated::stage_translation(
+                            &mut inst_mut,
+                            field,
+                            &locale,
+                            v.clone(),
+                        );
+                    } else {
+                        super::translated::seed_translation(
+                            &mut inst_mut,
+                            field,
+                            &locale,
+                            v.clone(),
+                        );
+                    }
                     continue;
                 }
             }

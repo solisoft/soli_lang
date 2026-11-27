@@ -1949,24 +1949,35 @@ mod field_write_rules_tests {
 
     #[test]
     fn a_models_translated_field_is_staged() {
+        use crate::interpreter::builtins::i18n::helpers::{get_locale, set_locale};
         crate::interpreter::builtins::model::register_translation("VmRulesDoc", "title");
         let doc = instance_of(
             model_class("VmRulesDoc"),
             &[("title", Value::String("Hello".into()))],
         );
-        run(
+        let previous = get_locale();
+        set_locale("fr");
+        let staged = run(
             "doc.title = \"Bonjour\"",
             vec![("doc", Value::Instance(doc.clone()))],
-        )
-        .expect("staged write");
+        );
+        // The default locale's value is the column itself.
+        set_locale("en");
+        let written = run(
+            "doc.title = \"Hi\"",
+            vec![("doc", Value::Instance(doc.clone()))],
+        );
+        set_locale(&previous);
+        staged.expect("staged write");
+        written.expect("column write");
         let doc = doc.borrow();
         assert_eq!(
             doc.fields.get("title").cloned(),
-            Some(Value::String("Hello".into())),
-            "the default-language value is untouched"
+            Some(Value::String("Hi".into())),
+            "a default-locale write goes to the column"
         );
         let Some(Value::Hash(pending)) = doc.fields.get("_pending_translations") else {
-            panic!("the write is staged in _pending_translations");
+            panic!("the fr write is staged in _pending_translations");
         };
         assert_eq!(pending.borrow().len(), 1);
     }

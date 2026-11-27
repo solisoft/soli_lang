@@ -670,8 +670,8 @@ pub(super) fn register(native_methods: &mut HashMap<String, Rc<NativeFunction>>)
     );
 
     // instance.translation("title", "fr") — that locale's value of a
-    // translated field, staged or stored; nil when it has none (no chain,
-    // no column).
+    // translated field, staged or stored (the column for the default
+    // locale); nil when it has none (no chain).
     native_methods.insert(
         "translation".to_string(),
         Rc::new(NativeFunction::new("Model#translation", Some(2), |args| {
@@ -691,6 +691,12 @@ pub(super) fn register(native_methods: &mut HashMap<String, Rc<NativeFunction>>)
                 &field,
                 &locale,
             );
+            // The default locale's value is the column.
+            let column = || {
+                (locale == crate::interpreter::builtins::i18n::helpers::default_locale())
+                    .then(|| inst.get(&field))
+                    .flatten()
+            };
             Ok(staged
                 .or_else(|| {
                     super::translated::translation_in(
@@ -699,18 +705,30 @@ pub(super) fn register(native_methods: &mut HashMap<String, Rc<NativeFunction>>)
                         &locale,
                     )
                 })
+                .or_else(column)
                 .unwrap_or(Value::Null))
         })),
     );
 
     // instance.translations("title") — every locale's value of a translated
-    // field, stored and staged: {fr => "Bonjour", es => "Hola"}.
+    // field, stored and staged, the default locale's from the column:
+    // {en => "Hello", fr => "Bonjour", es => "Hola"}.
     native_methods.insert(
         "translations".to_string(),
         Rc::new(NativeFunction::new("Model#translations", Some(1), |args| {
             let (instance, field) = translated_receiver(args, "translations")?;
             let inst = instance.borrow();
             let mut merged = crate::interpreter::value::HashPairs::default();
+            // The default locale's value is the column; an entry written
+            // before that rule still wins, as it does for a reader.
+            if let Some(column) = inst.get(&field).filter(|v| !matches!(v, Value::Null)) {
+                merged.insert(
+                    HashKey::String(
+                        crate::interpreter::builtins::i18n::helpers::default_locale().into(),
+                    ),
+                    column,
+                );
+            }
             for source in ["translated_fields", "_pending_translations"] {
                 if let Some(Value::Hash(by_field)) = inst.get(source) {
                     let by_locale = by_field
@@ -1141,6 +1159,26 @@ fn merged_translations(
         }
     }
     translated
+}
+
+/// Fold the instance's `_pending_translations` into its `translated_fields`,
+/// as `save` / `update` do before writing — for `Model.create`, which writes
+/// its attributes hash rather than the instance. Returns the merged
+/// `translated_fields`; `None` when nothing was staged.
+pub(super) fn fold_pending_translations(
+    instance: &Rc<RefCell<Instance>>,
+) -> Option<serde_json::Value> {
+    let class_name = instance.borrow().class.name.clone();
+    let names = get_translated_fields(&class_name);
+    if names.is_empty() || instance.borrow().get("_pending_translations").is_none() {
+        return None;
+    }
+    let merged = serde_json::Value::Object(merged_translations(&instance.borrow(), &names));
+    let mut inst = instance.borrow_mut();
+    inst.fields
+        .insert("translated_fields".into(), json_to_value(&merged));
+    inst.fields.remove("_pending_translations");
+    Some(merged)
 }
 
 /// What a model update did.

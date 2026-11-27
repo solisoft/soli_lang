@@ -3080,10 +3080,11 @@ the migration `db` handle for one-off cleanups. For continuous aggregates
 ## Translated Fields
 
 `translate "title", "body"` in a model's body keeps one value per locale for
-those fields, in a `translated_fields` hash of the same document, and
-`record.title` reads and writes the request's locale, falling back to the
-column. `where_translated` / `order_translated` query them as a reader in the
-locale sees them, and `{"locale": "fr"}` on a form field edits one locale.
+those fields: the default locale's in the column, the others in a
+`translated_fields` hash of the same document. `record.title` reads and writes
+the request's locale, falling back to the column. `where_translated` / `order_translated` query them as a reader in the
+locale sees them (`order("title")` on a translated field sorts the translation,
+ignoring case and accents), and `{"locale": "fr"}` on a form field edits one locale.
 See [Translated model fields](i18n.md#translated-model-fields).
 
 ```soli

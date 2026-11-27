@@ -112,14 +112,17 @@ impl Interpreter {
                         &arguments,
                     )
                     .map_err(|e| RuntimeError::type_error(e, span))?;
-                let criterion =
-                    crate::interpreter::builtins::model::translated::translated_order_field(
+                let criteria =
+                    crate::interpreter::builtins::model::translated::translated_sort_criteria(
                         &class_name,
                         &field,
+                        &direction,
                     )
                     .map_err(|e| RuntimeError::type_error(e, span))?;
                 let mut new_qb = qb.borrow().clone();
-                new_qb.set_order(criterion, direction);
+                for (criterion, direction) in criteria {
+                    new_qb.set_order(criterion, direction);
+                }
                 Ok(Value::QueryBuilder(Rc::new(RefCell::new(new_qb))))
             }
             "order" => self.qb_order(qb, arguments, span, false),
@@ -421,8 +424,16 @@ persisted record (e.g. user.posts.create({...})) — use Model.create for plain 
         let criteria = if replace && arguments.is_empty() {
             Vec::new()
         } else {
-            crate::interpreter::builtins::model::order_criteria_from_args(&arguments, method)
-                .map_err(|e| RuntimeError::type_error(e, span))?
+            let criteria =
+                crate::interpreter::builtins::model::order_criteria_from_args(&arguments, method)
+                    .map_err(|e| RuntimeError::type_error(e, span))?;
+            let class_name = crate::interpreter::symbol::symbol_string(qb.borrow().class_name)
+                .unwrap_or_default()
+                .to_string();
+            crate::interpreter::builtins::model::translated::expand_translated_order(
+                &class_name,
+                criteria,
+            )
         };
         let mut new_qb = qb.borrow().clone();
         if replace {

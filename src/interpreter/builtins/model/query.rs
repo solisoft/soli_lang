@@ -613,7 +613,7 @@ impl QueryBuilder {
 
         let sort: Vec<String> = self
             .order_criteria()
-            .map(|(field, dir)| format!("doc.{} {}", field, sort_keyword(dir)))
+            .map(|(field, dir)| format!("{} {}", sort_term(field), sort_keyword(dir)))
             .collect();
         if !sort.is_empty() {
             query.push_str(&format!(" SORT {}", sort.join(", ")));
@@ -2013,6 +2013,22 @@ fn sql_aggregate(
             Err(e) => Err(format!("Error: {e}")),
         },
         Err(e) => Err(format!("Error: {e}")),
+    }
+}
+
+/// Marks a sort criterion that is a whole SDBQL expression rather than a
+/// field: rendered verbatim, without the `doc.` prefix. Only the model layer
+/// builds one (`order_translated`); a field from `order(...)` cannot start
+/// with it, since `validate_field_name` lets through only letters, digits
+/// and underscores.
+pub(crate) const SORT_EXPRESSION_MARK: char = '\u{1}';
+
+/// A criterion as it goes into `SORT`: `doc.<field>`, or a marked expression
+/// as written.
+pub(crate) fn sort_term(field: &str) -> String {
+    match field.strip_prefix(SORT_EXPRESSION_MARK) {
+        Some(expression) => expression.to_string(),
+        None => format!("doc.{field}"),
     }
 }
 

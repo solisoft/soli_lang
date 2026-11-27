@@ -84,10 +84,19 @@ pub fn translated_filter(
     Ok((clauses.join(" AND "), binds))
 }
 
-/// The sort criterion `order_translated("title")` adds, in the builder's
-/// `doc.<field>` form: the reader's value of a translated field. Refused on
-/// the SQL adapters, which cannot run it.
-pub fn translated_order_field(class_name: &str, field: &str) -> Result<String, String> {
+/// The sort criteria that put a translated field in the order a reader of
+/// the current locale expects. SoliDB compares strings by code point, which
+/// puts "Zèbre" before "banane" and "école" after "zinc"; the first criterion
+/// compares the reader's value lower-cased and without accents, the second
+/// breaks its ties on the value as written. Right for the Latin languages
+/// that file an accented letter with its base letter (English, French,
+/// Spanish, Italian, Portuguese…); no index serves it. Refused on the SQL
+/// adapters, which cannot run it.
+pub fn translated_sort_criteria(
+    class_name: &str,
+    field: &str,
+    direction: &str,
+) -> Result<Vec<(String, String)>, String> {
     checked_field(field, "order_translated()")?;
     if crate::db::is_sql() {
         return Err(
@@ -95,15 +104,39 @@ pub fn translated_order_field(class_name: &str, field: &str) -> Result<String, S
                 .to_string(),
         );
     }
-    let expression = reader_expression(class_name, field);
-    // The builder renders `doc.<criterion>`: hand it the expression minus
-    // that leading `doc.`, unparenthesized so the prefix lands on its first
-    // operand.
-    let bare = expression
-        .strip_prefix('(')
-        .and_then(|e| e.strip_suffix(')'))
-        .unwrap_or(&expression);
-    Ok(bare.strip_prefix("doc.").unwrap_or(bare).to_string())
+    let reader = reader_expression(class_name, field);
+    let mark = super::query::SORT_EXPRESSION_MARK;
+    Ok(vec![
+        (
+            format!("{mark}LOWER(UNACCENT({reader}))"),
+            direction.to_string(),
+        ),
+        (format!("{mark}{reader}"), direction.to_string()),
+    ])
+}
+
+/// `order(...)`'s criteria with each translated field replaced by
+/// [`translated_sort_criteria`], so `order("title")` sorts what the page
+/// shows rather than the column. Unchanged on the SQL adapters, where a
+/// translated field is the column.
+pub fn expand_translated_order(
+    class_name: &str,
+    criteria: Vec<(String, String)>,
+) -> Vec<(String, String)> {
+    if crate::db::is_sql() {
+        return criteria;
+    }
+    let mut expanded = Vec::with_capacity(criteria.len());
+    for (field, direction) in criteria {
+        if super::is_translated_field(class_name, &field) {
+            if let Ok(translated) = translated_sort_criteria(class_name, &field, &direction) {
+                expanded.extend(translated);
+                continue;
+            }
+        }
+        expanded.push((field, direction));
+    }
+    expanded
 }
 
 /// `order_translated(field, direction?)`'s arguments: the field and
@@ -146,12 +179,22 @@ pub fn missing_filter(
             "missing_translations(): {class_name} declares no translated field"
         ));
     }
+    // The default locale's value is the column (an entry in
+    // `translated_fields` only on records written before that rule).
+    let is_default = locale == crate::interpreter::builtins::i18n::helpers::default_locale();
     let mut clauses = Vec::with_capacity(fields.len());
     for field in &fields {
         checked_field(field, "missing_translations()")?;
-        clauses.push(format!(
-            "doc.translated_fields.{field}[@__tr_locale] == null"
-        ));
+        if is_default {
+            clauses.push(format!(
+                "(doc.translated_fields.{field}[@__tr_locale] == null AND \
+                 (doc.{field} == null OR doc.{field} == \"\"))"
+            ));
+        } else {
+            clauses.push(format!(
+                "doc.translated_fields.{field}[@__tr_locale] == null"
+            ));
+        }
     }
     let mut binds = HashMap::new();
     binds.insert(
@@ -161,9 +204,14 @@ pub fn missing_filter(
     Ok((format!("({})", clauses.join(" OR ")), binds))
 }
 
-/// Stage `value` as `field`'s translation in `locale`
-/// (`_pending_translations.{field}.{locale}`); `save` / `update` fold it
-/// into `translated_fields`.
+/// Write `value` as `field`'s value in `locale`.
+///
+/// The default locale's value is the column itself: written there, and any
+/// `translated_fields.{field}.{default}` — which a reader would see before
+/// the column — dropped, so the column never goes stale behind it and
+/// `where({"title": …})` compares what default-locale readers see. Another
+/// locale is staged (`_pending_translations.{field}.{locale}`); `save` /
+/// `update` fold it into `translated_fields`.
 pub fn stage_translation(
     inst: &mut crate::interpreter::value::Instance,
     field: &str,
@@ -172,6 +220,18 @@ pub fn stage_translation(
 ) {
     use std::cell::RefCell;
     use std::rc::Rc;
+    if locale == crate::interpreter::builtins::i18n::helpers::default_locale() {
+        inst.set(field.to_string(), value);
+        for source in ["_pending_translations", "translated_fields"] {
+            if let Some(stripped) = inst
+                .get(source)
+                .and_then(|by_field| without_locale(&by_field, field, locale))
+            {
+                inst.fields.insert(source.into(), stripped);
+            }
+        }
+        return;
+    }
     let child = |parent: &Rc<RefCell<HashPairs>>, key: &str| {
         let key = HashKey::String(key.into());
         let existing = parent.borrow().get(&key).cloned();
@@ -196,6 +256,35 @@ pub fn stage_translation(
     child(&pending, field)
         .borrow_mut()
         .insert(HashKey::String(locale.into()), value);
+}
+
+/// `by_field` (a `translated_fields`-shaped hash) without `{field}.{locale}`,
+/// as a new hash — the instance's may be shared with its dirty-tracking
+/// snapshot, so it is never edited in place. `None` when there was no such
+/// entry.
+fn without_locale(by_field: &Value, field: &str, locale: &str) -> Option<Value> {
+    let mut json = crate::interpreter::value::value_to_json(by_field).ok()?;
+    let by_locale = json.get_mut(field)?.as_object_mut()?;
+    by_locale.remove(locale)?;
+    Some(crate::interpreter::value_json::json_to_value_or_null(json))
+}
+
+/// What `Model.create` / `Model.new` put on a record for a translated field:
+/// the column, and — when the request's locale is not the default one —
+/// that locale's translation too, so the value is not lost once a
+/// default-locale write replaces the column.
+pub fn seed_translation(
+    inst: &mut crate::interpreter::value::Instance,
+    field: &str,
+    locale: &str,
+    value: Value,
+) {
+    inst.set(field.to_string(), value.clone());
+    if locale != crate::interpreter::builtins::i18n::helpers::default_locale()
+        && !matches!(value, Value::Null)
+    {
+        stage_translation(inst, field, locale, value);
+    }
 }
 
 /// `{"title": {"fr": "Bonjour"}, …}` — a `translated_fields` hash given to
@@ -259,4 +348,23 @@ pub fn translation_in(
         .get(&HashKey::String(locale.into()))
         .cloned();
     found
+}
+
+/// `Model.sync_translated_columns`'s statement for one field: on each record
+/// holding a `translated_fields.{field}.{default}` entry (written before the
+/// default locale's value lived in the column), move it into the column.
+/// SoliDB only.
+pub fn sync_column_statement(
+    field: &str,
+    for_head: &str,
+    collection: &str,
+) -> Result<String, String> {
+    checked_field(field, "sync_translated_columns()")?;
+    Ok(format!(
+        "{for_head} FILTER doc.translated_fields.{field}[@__tr_default] != null \
+         UPDATE doc WITH {{{field}: doc.translated_fields.{field}[@__tr_default], \
+         translated_fields: MERGE(doc.translated_fields, \
+         {{{field}: UNSET(doc.translated_fields.{field}, @__tr_default)}})}} \
+         IN {collection} RETURN 1"
+    ))
 }

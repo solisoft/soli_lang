@@ -204,6 +204,14 @@ pub(super) fn register(native_static_methods: &mut HashMap<String, Rc<NativeFunc
                 )),
             };
             let mut data_value = data_value?;
+            // Created outside the default locale, a translated field is also
+            // that locale's translation (`translated::seed_translation`).
+            if let Some(translated) = super::register_instance::fold_pending_translations(&instance)
+            {
+                if let serde_json::Value::Object(ref mut map) = data_value {
+                    map.insert("translated_fields".to_string(), translated);
+                }
+            }
             strip_reserved_document_keys(&mut data_value, &class_name);
             // Edge endpoints go back in after the strip. They are not mass
             // assignment: `transform_edge_data` resolved and validated them
@@ -515,11 +523,68 @@ pub(super) fn register(native_static_methods: &mut HashMap<String, Rc<NativeFunc
                     class.clone(),
                 );
                 let (field, direction) = super::translated::order_translated_args(&args[1..])?;
-                qb.set_order(
-                    super::translated::translated_order_field(&class.name, &field)?,
-                    direction,
-                );
+                for (criterion, direction) in
+                    super::translated::translated_sort_criteria(&class.name, &field, &direction)?
+                {
+                    qb.set_order(criterion, direction);
+                }
                 Ok(Value::QueryBuilder(Rc::new(RefCell::new(qb))))
+            },
+        )),
+    );
+
+    // Model.sync_translated_columns — move each `translated_fields.{field}.
+    // {default locale}` entry (written before the default locale's value
+    // lived in the column) into the column. Returns how many records were
+    // rewritten, field by field summed. SoliDB only.
+    native_static_methods.insert(
+        "sync_translated_columns".to_string(),
+        Rc::new(NativeFunction::new_auto_invocable(
+            "Model.sync_translated_columns",
+            Some(1),
+            |args| {
+                let class = get_class_rc_from_args(args)?;
+                if crate::db::is_sql() {
+                    return Err("sync_translated_columns() is SoliDB-only".to_string());
+                }
+                let fields = super::get_translated_fields(&class.name);
+                if fields.is_empty() {
+                    return Err(format!(
+                        "sync_translated_columns(): {} declares no translated field",
+                        class.name
+                    ));
+                }
+                let collection = class_name_to_collection(&class.name);
+                let qb = QueryBuilder::new_with_class(
+                    class.name.clone(),
+                    collection.clone(),
+                    class.clone(),
+                );
+                let head = qb.for_head();
+                let mut binds = qb.bind_vars.clone();
+                binds.insert(
+                    "__tr_default".to_string(),
+                    serde_json::Value::String(
+                        crate::interpreter::builtins::i18n::helpers::default_locale(),
+                    ),
+                );
+                let mut rewritten: i64 = 0;
+                for field in &fields {
+                    let statement =
+                        super::translated::sync_column_statement(field, &head, &collection)?;
+                    match super::crud::exec_auto_collection_with_binds(
+                        statement,
+                        binds.clone(),
+                        &collection,
+                    ) {
+                        Value::String(message) if message.starts_with("Error: ") => {
+                            return Err(message.to_string())
+                        }
+                        Value::Array(rows) => rewritten += rows.borrow().len() as i64,
+                        _ => {}
+                    }
+                }
+                Ok(Value::Int(rewritten))
             },
         )),
     );
@@ -834,7 +899,10 @@ pub(super) fn register(native_static_methods: &mut HashMap<String, Rc<NativeFunc
             let class_name = class.name.clone();
             let collection = class_name_to_collection(&class_name);
 
-            let criteria = order_criteria_from_args(&args[1..], "order")?;
+            let criteria = super::translated::expand_translated_order(
+                &class_name,
+                order_criteria_from_args(&args[1..], "order")?,
+            );
             let mut qb = QueryBuilder::new_with_class(class_name, collection, class);
             for (field, direction) in criteria {
                 qb.set_order(field, direction);

@@ -411,16 +411,23 @@ Article.find(article._key).title   # "Bonjour"</code></pre>
     </div>
     <p class="text-gray-400 mb-4">Where the values live:</p>
     <ul class="list-disc list-inside text-gray-400 mb-6 space-y-2">
-        <li><strong class="text-white">The column</strong> (<code class="text-cyan-400">title</code>) keeps what <code class="text-cyan-400">create</code> / <code class="text-cyan-400">new</code> were given. It is the fallback: a locale with no translation reads it.</li>
-        <li><strong class="text-white"><code class="text-cyan-400">translated_fields</code></strong> holds the rest, as <code class="text-cyan-400">{"title": {"fr": "Bonjour", "es": "Hola"}}</code>, in the same document. A <code class="text-cyan-400">create</code> can seed it directly.</li>
-        <li><strong class="text-white">A write</strong> &mdash; <code class="text-cyan-400">article.title = …</code>, <code class="text-cyan-400">@title = …</code> in a method, <code class="text-cyan-400">article.update({"title": …})</code>, <code class="text-cyan-400">article.save({"title": …})</code> &mdash; is staged under the locale active <em>when you write</em>, and <code class="text-cyan-400">save</code> / <code class="text-cyan-400">update</code> merge it into <code class="text-cyan-400">translated_fields</code>, keeping the other locales already stored. It does not overwrite the column, even in the default locale.</li>
+        <li><strong class="text-white">The column</strong> (<code class="text-cyan-400">title</code>) holds the <strong class="text-white">default locale&rsquo;s</strong> value (<code class="text-cyan-400">SOLI_DEFAULT_LOCALE</code>, else <code class="text-cyan-400">en</code>). It is also the fallback: a locale with no translation reads it. Because it stays current, <code class="text-cyan-400">where({"title": …})</code>, <code class="text-cyan-400">find_by</code>, a uniqueness rule or an index on <code class="text-cyan-400">title</code> see what a default-locale reader sees.</li>
+        <li><strong class="text-white"><code class="text-cyan-400">translated_fields</code></strong> holds the other locales, as <code class="text-cyan-400">{"title": {"fr": "Bonjour", "es": "Hola"}}</code>, in the same document. A <code class="text-cyan-400">create</code> can seed it directly.</li>
+        <li><strong class="text-white">A write</strong> &mdash; <code class="text-cyan-400">article.title = …</code>, <code class="text-cyan-400">@title = …</code> in a method, <code class="text-cyan-400">article.update({"title": …})</code>, <code class="text-cyan-400">article.save({"title": …})</code>, <code class="text-cyan-400">set_translation</code> &mdash; goes by the locale active <em>when you write</em>: in the default locale it writes the column; in another it is staged, and <code class="text-cyan-400">save</code> / <code class="text-cyan-400">update</code> merge it into <code class="text-cyan-400">translated_fields</code>, keeping the locales already stored.</li>
+        <li><strong class="text-white"><code class="text-cyan-400">create</code> / <code class="text-cyan-400">new</code></strong> fill the column with what they are given. Run in another locale than the default, they store it as that locale&rsquo;s translation too: a record created in French stays French once someone writes its English title into the column.</li>
     </ul>
-    <p class="text-gray-400 mb-12">A read looks along the locale&rsquo;s regional chain &mdash; the locale, its declared fallbacks, its base language (<code class="text-cyan-400">fr-CA</code> &rarr; <code class="text-cyan-400">fr</code>) &mdash; for a staged value, then a stored one, and then reads the column. The default locale is not part of that chain: the column already holds the record&rsquo;s own language.</p>
+    <p class="text-gray-400 mb-6">A read looks along the locale&rsquo;s regional chain &mdash; the locale, its declared fallbacks, its base language (<code class="text-cyan-400">fr-CA</code> &rarr; <code class="text-cyan-400">fr</code>) &mdash; for a staged value, then a stored one, and then reads the column.</p>
+    <p class="text-gray-400 mb-6">Records written before 2.43.2 may carry the default locale&rsquo;s value in <code class="text-cyan-400">translated_fields</code> (<code class="text-cyan-400">{"title": {"en": …}}</code>), with a column frozen at what <code class="text-cyan-400">create</code> was given. A reader still sees the entry; the next default-locale write moves it into the column. <code class="text-cyan-400">Article.sync_translated_columns</code> moves them all in one query per translated field, and returns how many records it rewrote (SoliDB):</p>
+    <div class="rounded-lg bg-[#171412] overflow-hidden mb-12">
+        <div class="p-4 overflow-x-auto">
+<pre><code class="language-soli text-sm">Article.sync_translated_columns   # =&gt; 42 — run it once, from a migration or the console</code></pre>
+        </div>
+    </div>
     <h3 id="several-locales" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Reading and writing several locales</h3>
     <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
         <div class="p-4 overflow-x-auto">
 <pre><code class="language-soli text-sm">article.translation("title", "fr")         # "Bonjour" — that locale only, nil if none
-article.translations("title")              # {fr =&gt; Bonjour, es =&gt; Hola}
+article.translations("title")              # {en =&gt; Hello, fr =&gt; Bonjour, es =&gt; Hola} — en from the column
 article.set_translation("title", "de", "Hallo")   # staged; save writes it</code></pre>
         </div>
     </div>
@@ -452,7 +459,8 @@ Article.where({"published": true}).order_translated("title", "desc").limit(10).a
 Article.missing_translations("es").all   # records lacking es for a translated field</code></pre>
         </div>
     </div>
-    <p class="text-gray-400 mb-12">These three are SoliDB-only: on the SQL adapters they are refused, as a raw string <code class="text-cyan-400">where</code> is. A path in a string filter reaches one locale directly: <code class="text-cyan-400">Article.where("doc.translated_fields.title.fr == @t", {"t": "Bonjour"})</code>.</p>
+    <p class="text-gray-400 mb-6">Sorting a translated field compares what a reader expects, not raw code points: case and accents are set aside, so <code class="text-cyan-400">fr</code> gives Abricot, banane, Éclair, école, Zèbre &mdash; where a plain comparison gives Abricot, Zèbre, banane, Éclair, école. Values equal once folded are ordered as written. <code class="text-cyan-400">order("title")</code> on a field the model declares translated does the same, since the column is not what the page shows. This is right for languages that file an accented letter with its base letter (English, French, Spanish, Italian, Portuguese); Swedish <code class="text-cyan-400">å ä ö</code> or German <code class="text-cyan-400">ß</code> are not placed by their alphabet. No index serves this sort: SoliDB sorts the matching documents in memory, so filter and <code class="text-cyan-400">limit</code> a large collection.</p>
+    <p class="text-gray-400 mb-12">These three are SoliDB-only: on the SQL adapters they are refused, as a raw string <code class="text-cyan-400">where</code> is (<code class="text-cyan-400">order("title")</code> there sorts the column). A path in a string filter reaches one locale directly: <code class="text-cyan-400">Article.where("doc.translated_fields.title.fr == @t", {"t": "Bonjour"})</code>.</p>
     <h2 id="formats-from-locale-files" class="text-2xl font-bold text-white mb-6 scroll-mt-24">Formats from your locale files</h2>
     <p class="text-gray-400 mb-6">A locale file can set the number and date conventions of a language Soli does not format, or change those of one it does. Only the locale&rsquo;s own file (and its regional chain) is read &mdash; a format is never borrowed from the default locale:</p>
     <div class="rounded-lg bg-[#171412] overflow-hidden mb-6">
@@ -579,6 +587,10 @@ form based on count.</p>
         <div class="p-4 rounded-xl bg-white/5 border border-white/10">
             <code class="text-orange-300 font-bold">Model.where_translated(hash) / order_translated(field, dir?) / missing_translations(locale)</code>
             <p class="text-sm text-gray-400 mt-2">Queries on translated fields, as a reader in the locale sees them (SoliDB).</p>
+        </div>
+        <div class="p-4 rounded-xl bg-white/5 border border-white/10">
+            <code class="text-orange-300 font-bold">Model.sync_translated_columns</code>
+            <p class="text-sm text-gray-400 mt-2">Move old default-locale entries of <code class="text-cyan-400">translated_fields</code> into the column; returns the count (SoliDB).</p>
         </div>
     </div>
 
