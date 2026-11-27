@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Added
+- **`soli test` shows what a spec printed.** Each file's `print` / `println` / `puts` output was captured per worker thread (`StdoutCaptureGuard`) and dropped; it is now kept with the file's result and listed under its row, `│ `-prefixed, passing or failing.
+
+### Fixed
+- **The dev error page's REPL answered "Forbidden dev REPL request" to everything.** The page embeds the REPL token only for a request that named a local `Host`, and read `RequestData.headers` after `request_input::build` had `mem::take`n them into `req["headers"]`, so the token was always empty (and the Headers tab too). Under `--dev` the headers are cloned instead. `tests/dev_error_repl_test.rs`.
+
 ## [2.43.0] - 2026-11-27
 
 ### Added

@@ -453,3 +453,39 @@ fn soli_lint_fails_on_a_file_that_does_not_parse() {
     let clean = soli(dir.path(), &["lint", "fine.sl"]);
     assert_eq!(clean.status.code(), Some(0), "{}", stdout(&clean));
 }
+
+/// `print` in a spec used to vanish: the runner captured each file's output
+/// per worker thread and dropped it. It is now listed under the file's row,
+/// for a passing file and a failing one alike.
+#[test]
+fn soli_test_shows_what_a_spec_printed() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(dir.path().join("tests")).unwrap();
+    std::fs::write(dir.path().join(".env.test"), "SOLIDB_DATABASE=prints\n").unwrap();
+    std::fs::write(
+        dir.path().join("tests/loud_spec.sl"),
+        "print(\"at the top\")\ndescribe(\"loud\") do\n  test(\"talks\") do\n    print(\"from a test\")\n    puts(\"and puts\")\n    assert(true)\n  end\nend\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.path().join("tests/quiet_spec.sl"),
+        "describe(\"quiet\") do\n  test(\"fails\") do\n    print(\"before failing\")\n    assert_eq(1, 2)\n  end\nend\n",
+    )
+    .unwrap();
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_soli"))
+        .args(["test", "tests", "--no-coverage", "--jobs", "2"])
+        .current_dir(dir.path())
+        .env("NO_COLOR", "1")
+        .output()
+        .expect("run soli test");
+    let text = String::from_utf8_lossy(&output.stdout);
+    assert!(text.contains("  │ at the top\n"), "{text}");
+    assert!(text.contains("  │ from a test\n"), "{text}");
+    assert!(text.contains("  │ and puts\n"), "{text}");
+    assert!(text.contains("  │ before failing\n"), "{text}");
+    let loud = text.find("loud_spec.sl").expect("loud row");
+    let quiet = text.find("quiet_spec.sl").expect("quiet row");
+    let printed = text.find("│ before failing").unwrap();
+    assert!(loud < text.find("│ at the top").unwrap(), "{text}");
+    assert!(quiet < printed, "output under its own file:\n{text}");
+}

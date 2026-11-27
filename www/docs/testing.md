@@ -948,6 +948,18 @@ The failure text itself is unchanged; a test whose error lies in another file
 (a model, a controller) keeps the text alone rather than a frame of the wrong
 file.
 
+What a spec prints — `print`, `println`, `puts`, at the top of the file or
+inside a test — is listed under its file's row, passing or failing, once the
+suite is done (printed live, it would tear through the workers' rows):
+
+```
+  users_spec.sl                                12ms      4 ✓
+  │ user id: 42
+  │ {"name": "Ada", "role": "admin"}
+```
+
+Each file's output stays with its file even under `--jobs`.
+
 A file that panics outright (rather than failing an assertion) loses its own
 assertion count, so the summary reports what the per-file tally saw. The test
 count has no second source — it is counted as each block ends, so the tests a

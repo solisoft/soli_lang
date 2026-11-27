@@ -1335,6 +1335,12 @@ soli test --profile                   # sample the specs; hottest functions on s
 
         <p class="text-gray-400 mb-4">The failure text itself is unchanged; a test whose error lies in another file (a model, a controller) keeps the text alone rather than a frame of the wrong file.</p>
 
+        <p class="text-gray-400 mb-4">What a spec prints &mdash; <code class="text-emerald-300">print</code>, <code class="text-emerald-300">println</code>, <code class="text-emerald-300">puts</code>, at the top of the file or inside a test &mdash; is listed under its file&rsquo;s row, passing or failing, once the suite is done (printed live, it would tear through the workers&rsquo; rows). Each file&rsquo;s output stays with its file even under <code class="text-emerald-300">--jobs</code>:</p>
+
+        <pre data-filename="Output"><code class="language-text text-sm">  users_spec.sl                                12ms      4 ✓
+  │ user id: 42
+  │ {"name": "Ada", "role": "admin"}</code></pre>
+
         <div class="my-6 p-4 rounded-lg bg-amber-500/10 border border-amber-500/20 mb-8">
             <p class="text-amber-300 text-sm">
                 <strong>Note:</strong> A file that panics outright (rather than failing an assertion) loses its own assertion count, so the summary reports what the per-file tally saw. The test count has no second source &mdash; it is counted as each block ends, so the tests a panicking file ran before it died are still there.

@@ -1111,7 +1111,18 @@ pub fn run_test(
     }));
     /// The file, whether it passed, its error, how long, how many
     /// assertions, and the code frame of each failing test (by test name).
-    type TestResult = (PathBuf, bool, String, Duration, i64, Vec<(String, String)>);
+    // The last field is what the file printed (`print`, `println`, `puts`):
+    // captured per worker thread while it ran, shown under its row once the
+    // live progress display is gone.
+    type TestResult = (
+        PathBuf,
+        bool,
+        String,
+        Duration,
+        i64,
+        Vec<(String, String)>,
+        String,
+    );
     let all_results_shared: Arc<Mutex<Vec<TestResult>>> = Arc::new(Mutex::new(Vec::new()));
 
     // Per-worker live state for the grid display. Each worker writes only
@@ -1257,6 +1268,7 @@ pub fn run_test(
                     let start = web_time::Instant::now();
                     let result = fs::read_to_string(&file).map_err(|e| e.to_string());
 
+                    let mut printed = String::new();
                     let (passed, error, assertions) = match result {
                         Ok(source) => {
                             // Every spec gets the app's models, services and
@@ -1294,7 +1306,7 @@ pub fn run_test(
                                         preamble_slice,
                                     )
                                 }));
-                            let _ = print_guard.finish();
+                            printed = String::from_utf8_lossy(&print_guard.finish()).into_owned();
                             // `--profile`: charge what is left to this file,
                             // drop any frame a panic left open, and stop
                             // charging until the next file starts (the wait
@@ -1349,7 +1361,7 @@ pub fn run_test(
                     all_results_shared
                         .lock()
                         .unwrap()
-                        .push((file, passed, error, duration, assertions, frames));
+                        .push((file, passed, error, duration, assertions, frames, printed));
                 }
 
                 // This worker is done: shut its browser down here rather than
@@ -1427,7 +1439,7 @@ pub fn run_test(
     // some filenames are longer than the default 40-char padding.
     let display_rows: Vec<String> = all_results
         .iter()
-        .map(|(path, _, _, _, _, _)| {
+        .map(|(path, _, _, _, _, _, _)| {
             let file_name = path.file_name().unwrap_or_default().to_string_lossy();
             match relative_parent(path, &test_dir) {
                 Some(parent) => format!("{}/{}", parent, file_name),
@@ -1443,7 +1455,7 @@ pub fn run_test(
         .max(40);
 
     let mut current_dir: Option<PathBuf> = None;
-    for ((path, passed_test, error, duration, assertions, frames), display_path) in
+    for ((path, passed_test, error, duration, assertions, frames, printed), display_path) in
         all_results.iter().zip(display_rows.iter())
     {
         let parent = path.parent().unwrap_or(path).to_path_buf();
@@ -1468,6 +1480,7 @@ pub fn run_test(
                 duration_str,
                 assertions
             );
+            print_captured_output(printed);
         } else {
             println!(
                 "  {}{} {:>8} {:>6} ✗",
@@ -1476,6 +1489,7 @@ pub fn run_test(
                 duration_str,
                 assertions
             );
+            print_captured_output(printed);
 
             let error_msg = error.trim();
             if error_msg.starts_with("Runtime error:") {
@@ -2937,6 +2951,18 @@ fn collect_and_register_sources(tracker: &mut CoverageTracker, dir: &Path) {
                 }
             }
         }
+    }
+}
+
+/// What a spec file printed, under its row in the report, one `│ ` per line
+/// so it reads as belonging to that file.
+fn print_captured_output(printed: &str) {
+    let printed = printed.trim_end();
+    if printed.is_empty() {
+        return;
+    }
+    for line in printed.lines() {
+        println!("  │ {}", line);
     }
 }
 

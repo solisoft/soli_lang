@@ -92,7 +92,16 @@ pub(super) fn build(
     // This is the ONE place the wire headers become owned Strings: straight
     // from hyper's HeaderMap into the Soli HashPairs handlers see as
     // req["headers"] (non-UTF-8 values are skipped, as before).
-    let wire_headers = std::mem::take(&mut data.headers);
+    //
+    // Under `--dev` they are copied instead: the dev error page reads them
+    // after the handler failed — `Host` decides whether the in-page REPL gets
+    // its token, and the Headers tab lists them. Taken, both came out empty
+    // and every REPL call answered "Forbidden dev REPL request".
+    let wire_headers = if crate::interpreter::builtins::template::is_dev_mode() {
+        data.headers.clone()
+    } else {
+        std::mem::take(&mut data.headers)
+    };
     let mut headers = HashPairs::with_capacity(wire_headers.keys_len());
     for (name, value) in &wire_headers {
         if let Ok(v) = value.to_str() {
