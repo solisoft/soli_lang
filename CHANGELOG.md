@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.43.1] - 2026-11-27
+
 ### Added
 - **`soli test` shows what a spec printed.** Each file's `print` / `println` / `puts` output was captured per worker thread (`StdoutCaptureGuard`) and dropped; it is now kept with the file's result and listed under its row, `│ `-prefixed, passing or failing.
 
