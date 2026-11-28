@@ -404,12 +404,17 @@ pub fn register_pdf_builtins(env: &mut Environment) {
         Value::NativeFunction(NativeFunction::new("pdf_verify", Some(1), |args| {
             let source = arg_string(&args[0], "pdf_verify", "pdf")?;
             let pdf = load_pdf_source(&source).map_err(|e| format!("pdf_verify(): {e}"))?;
-            let sigs =
-                soli_pdf::extract_signatures(&pdf).map_err(|e| format!("pdf_verify(): {e}"))?;
+            // A malformed upload must fail this call, not the request: lopdf
+            // and the CMS decoder run on bytes the caller does not control.
+            let sigs = std::panic::catch_unwind(|| soli_pdf::extract_signatures(&pdf))
+                .map_err(|_| "pdf_verify(): the PDF is malformed".to_string())?
+                .map_err(|e| format!("pdf_verify(): {e}"))?;
             let items: Vec<Value> = sigs
                 .into_iter()
                 .map(|s| {
-                    let outcome = pades::verify_cms(&s.cms_der, &s.signed_bytes);
+                    let outcome =
+                        std::panic::catch_unwind(|| pades::verify_cms(&s.cms_der, &s.signed_bytes))
+                            .unwrap_or_else(|_| Err("malformed signature".to_string()));
                     let mut h = HashPairs::default();
                     h.insert(
                         HashKey::String("field".into()),

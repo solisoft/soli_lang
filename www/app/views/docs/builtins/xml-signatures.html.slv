@@ -162,7 +162,7 @@ em  = Crypto.modexp(signature, key["e"], key["n"])   # the RSA verify step</code
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
                 </a>
-                <p class="text-gray-400 mb-3">Parses an RSA private key &mdash; PKCS#8 (<code class="text-amber-300">-----BEGIN PRIVATE KEY-----</code>) or PKCS#1 (<code class="text-amber-300">-----BEGIN RSA PRIVATE KEY-----</code>) PEM &mdash; so you can <strong>sign</strong>. The verification side, <code class="text-amber-300">X509.public_key</code>, only yields <code>(n, e)</code>.</p>
+                <p class="text-gray-400 mb-3">Parses an RSA private key &mdash; PKCS#8 (<code class="text-amber-300">-----BEGIN PRIVATE KEY-----</code>) or PKCS#1 (<code class="text-amber-300">-----BEGIN RSA PRIVATE KEY-----</code>) PEM &mdash; and returns its components. The verification side, <code class="text-amber-300">X509.public_key</code>, only yields <code>(n, e)</code>. To <strong>sign</strong>, pass the PEM to <a href="/docs/builtins/crypto#def-rsakey-sign" class="text-amber-300 underline">RsaKey.sign</a> rather than raising a digest to <code>d</code> with <code class="text-amber-300">Crypto.modexp</code>, which is not blinded.</p>
                 <h4 class="text-sm font-semibold text-gray-300 mt-4 mb-2">Returns</h4>
                 <div class="text-sm text-gray-400"><code class="text-orange-400">Hash</code> &mdash; <code>{ "algorithm": "RSA", "n": hex, "e": hex, "d": hex, "bits": Int }</code></div>
                 <p class="text-gray-400 mt-3 mb-3">The public counterpart is <code class="text-amber-400">RsaKey.public_from_pem(pem)</code>, which reads an SPKI (<code class="text-amber-300">-----BEGIN PUBLIC KEY-----</code>) or PKCS#1 public key and returns <code>{ algorithm, n, e, bits }</code>. Use it when you hold a bare public key rather than a certificate &mdash; publishing a JWKS, or verifying someone else&rsquo;s tokens. To check a PKCS#1 v1.5 signature with such a key in one call, use <a href="/docs/builtins/crypto#def-rsakey-verify" class="text-amber-300 underline">RsaKey.verify</a>.</p>
@@ -247,22 +247,19 @@ param = Base64.encode(Deflate.deflate(authn_request_xml))</code></pre>
             Putting It Together
         </h2>
 
-        <p class="text-gray-400 leading-relaxed mb-4">RSA signing is <code class="text-amber-300">modexp</code> over a PKCS#1-padded digest, and verification is the same operation with the public exponent, unpadded. The round trip below is the whole of it:</p>
+        <p class="text-gray-400 leading-relaxed mb-4">Sign with <a href="/docs/builtins/crypto#def-rsakey-sign" class="text-amber-300 underline">RsaKey.sign</a>, which computes the RSASSA-PKCS1-v1_5 signature with <code class="text-amber-300">ring</code> (blinded, constant time); verify with <code class="text-amber-300">RsaKey.verify</code>, or by hand with <code class="text-amber-300">modexp</code> over the <em>public</em> exponent:</p>
 
-<pre data-filename="Sign and verify"><code class="language-soli text-sm">key         = RsaKey.private_from_pem(sp_private_key_pem)
-key_octets  = key["bits"] / 8
+<pre data-filename="Sign and verify"><code class="language-soli text-sm">signature = RsaKey.sign(sp_private_key_pem, canonical_xml)          # base64
+RsaKey.verify(sp_public_key_pem, canonical_xml, signature)          # => true
 
-digest      = Crypto.sha256(canonical_xml)
-em          = Crypto.pkcs1_pad(digest, key_octets)   # block type 1
-signature   = Crypto.modexp(em, key["d"], key["n"])  # sign
-
-# Verify with the public exponent
-recovered   = Crypto.pkcs1_unpad(Crypto.modexp(signature, key["e"], key["n"]))
-assert(recovered == digest)</code></pre>
+# The same check by hand, with the public exponent
+key       = RsaKey.public_from_pem(sp_public_key_pem)
+recovered = Crypto.pkcs1_unpad(Crypto.modexp(Hex.encode(Base64.decode(signature)), key["e"], key["n"]))
+assert(recovered.ends_with?(Crypto.sha256(canonical_xml)))</code></pre>
 
         <div class="rounded-xl bg-red-500/10 border border-red-500/20 p-5 mt-6">
             <p class="text-gray-300 leading-relaxed text-sm">
-                <strong class="text-red-400">This is textbook RSA.</strong> <code class="text-amber-300">Crypto.modexp</code> is unblinded and its big-integer arithmetic is not constant-time, so a local attacker who can measure your signing operation precisely may be able to recover key material. That is a deliberate trade: the Rust <code class="text-amber-300">rsa</code> crate carries an unfixed timing advisory (RUSTSEC-2023-0071) and is excluded from this project. It is appropriate for signing documents you are publishing; treat a high-rate signing oracle exposed to untrusted timing measurement as out of scope.
+                <strong class="text-red-400">Do not sign with <code class="text-amber-300">Crypto.modexp</code>.</strong> Raising a padded digest to the private exponent <code>d</code> with it is textbook RSA: unblinded, and its big-integer arithmetic is not constant-time, so anyone who can have you sign chosen messages and time it may recover the key. <code class="text-amber-300">RsaKey.sign</code> exists for exactly this; the Rust <code class="text-amber-300">rsa</code> crate stays excluded (its timing advisory RUSTSEC-2023-0071 has no fix).
             </p>
         </div>
     </section>

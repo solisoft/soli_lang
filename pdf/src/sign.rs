@@ -841,7 +841,10 @@ pub struct ExtractedSignature {
     pub field: String,
     pub signed_bytes: Vec<u8>,
     pub cms_der: Vec<u8>,
-    /// True when the `/ByteRange` reaches EOF (the whole document is signed).
+    /// True when the signature covers the whole file but its own `/Contents`:
+    /// the `/ByteRange` starts at byte 0, ends at EOF, and the one span it
+    /// leaves out is exactly this signature's `/Contents` hex string (see
+    /// [`covers_whole_file`]).
     pub covers_document: bool,
     pub reason: Option<String>,
     /// The `/M` signing-time PDF date string, if present.
@@ -858,16 +861,104 @@ fn trim_der(bytes: &[u8]) -> Vec<u8> {
     let total = if len_byte < 0x80 {
         2 + len_byte as usize
     } else {
+        // A length of more octets than a `usize` holds is not a length this
+        // blob can have: keep it whole and let the CMS parser refuse it.
         let n = (len_byte & 0x7f) as usize;
-        if 2 + n > bytes.len() {
+        if n > std::mem::size_of::<usize>() || 2 + n > bytes.len() {
             return bytes.to_vec();
         }
         let l = bytes[2..2 + n]
             .iter()
             .fold(0usize, |a, &b| (a << 8) | b as usize);
-        2 + n + l
+        match l.checked_add(2 + n) {
+            Some(total) => total,
+            None => return bytes.to_vec(),
+        }
     };
     bytes[..total.min(bytes.len())].to_vec()
+}
+
+/// A `/ByteRange` as two in-bounds `(start, len)` spans, in file order.
+///
+/// `None` for anything that is not: a negative or non-integer entry, a sum
+/// that overflows, a span past EOF, or a second span that starts before the
+/// first one ends. The entries were cast with `as usize`, so `-1` became
+/// `usize::MAX` and `s1 + l1` could wrap (or panic, in a debug build).
+fn checked_byte_range(nums: &[i64], file_len: usize) -> Option<[usize; 4]> {
+    let [s1, l1, s2, l2] = <[i64; 4]>::try_from(nums).ok()?;
+    let [s1, l1, s2, l2] = [s1, l1, s2, l2].map(|n| usize::try_from(n).ok());
+    let (s1, l1, s2, l2) = (s1?, l1?, s2?, l2?);
+    let end1 = s1.checked_add(l1)?;
+    let end2 = s2.checked_add(l2)?;
+    (end1 <= s2 && end2 <= file_len).then_some([s1, l1, s2, l2])
+}
+
+/// Whether a well-formed `/ByteRange` signs the whole file but this
+/// signature's own `/Contents`.
+///
+/// Reaching EOF is not enough. The first span must start at byte 0, or the
+/// bytes before it are unsigned. And the gap between the spans — the only
+/// bytes the signature leaves out — must be exactly the hex string of this
+/// signature's `/Contents`, right after its `/Contents` key: otherwise a
+/// range that ends at EOF can still leave out a page, an annotation, or any
+/// object an attacker placed between the spans.
+fn covers_whole_file(pdf: &[u8], range: [usize; 4], contents: &[u8]) -> bool {
+    let [s1, l1, s2, l2] = range;
+    s1 == 0 && s2 + l2 == pdf.len() && gap_is_contents(pdf, l1, s2, contents)
+}
+
+/// `pdf[start..end]` is the hex string whose value is `contents`, and the
+/// token before it (whitespace aside) is the `/Contents` key.
+///
+/// Two shapes are accepted, both tight to the string: the gap is `<hex>`,
+/// delimiters included (ISO 32000, what Acrobat writes), or the hex digits
+/// alone between a `<` and a `>` just outside it (what `prepare_signature`
+/// writes).
+fn gap_is_contents(pdf: &[u8], start: usize, end: usize, contents: &[u8]) -> bool {
+    let Some(gap) = pdf.get(start..end) else {
+        return false;
+    };
+    let (hex, opener) = match (gap.first(), gap.last()) {
+        (Some(b'<'), Some(b'>')) if gap.len() >= 2 => (&gap[1..gap.len() - 1], start),
+        _ => match (start.checked_sub(1).map(|at| pdf[at]), pdf.get(end)) {
+            (Some(b'<'), Some(b'>')) => (gap, start - 1),
+            _ => return false,
+        },
+    };
+    let digits: Vec<u8> = hex
+        .iter()
+        .copied()
+        .filter(|b| !b.is_ascii_whitespace())
+        .collect();
+    if !digits.iter().all(u8::is_ascii_hexdigit) {
+        return false;
+    }
+    // PDF hex strings: an odd final digit is read as followed by a 0.
+    let decoded: Vec<u8> = digits
+        .chunks(2)
+        .map(|pair| {
+            let high = hex_value(pair[0]);
+            let low = pair.get(1).map_or(0, |&digit| hex_value(digit));
+            (high << 4) | low
+        })
+        .collect();
+    if decoded != contents {
+        return false;
+    }
+    let before = pdf[..opener]
+        .iter()
+        .rposition(|b| !b.is_ascii_whitespace())
+        .map_or(&pdf[..0], |last| &pdf[..=last]);
+    before.ends_with(b"/Contents")
+}
+
+fn hex_value(digit: u8) -> u8 {
+    match digit {
+        b'0'..=b'9' => digit - b'0',
+        b'a'..=b'f' => digit - b'a' + 10,
+        b'A'..=b'F' => digit - b'A' + 10,
+        _ => 0,
+    }
 }
 
 /// Extract every signature field's covered bytes + CMS from an existing PDF, so
@@ -909,19 +1000,18 @@ pub fn extract_signatures(pdf: &[u8]) -> Result<Vec<ExtractedSignature>> {
         let Some(br) = sig.get(b"ByteRange").ok().and_then(|o| o.as_array().ok()) else {
             continue;
         };
-        let nums: Vec<i64> = br.iter().filter_map(|o| o.as_i64().ok()).collect();
-        if nums.len() != 4 {
+        // Every entry must be an integer: a dropped one would shift the rest.
+        let Some(nums) = br
+            .iter()
+            .map(|o| o.as_i64().ok())
+            .collect::<Option<Vec<i64>>>()
+        else {
             continue;
-        }
-        let (s1, l1, s2, l2) = (
-            nums[0] as usize,
-            nums[1] as usize,
-            nums[2] as usize,
-            nums[3] as usize,
-        );
-        if s1 + l1 > pdf.len() || s2 + l2 > pdf.len() {
+        };
+        let Some(range) = checked_byte_range(&nums, pdf.len()) else {
             continue;
-        }
+        };
+        let [s1, l1, s2, l2] = range;
         let mut signed = Vec::with_capacity(l1 + l2);
         signed.extend_from_slice(&pdf[s1..s1 + l1]);
         signed.extend_from_slice(&pdf[s2..s2 + l2]);
@@ -938,7 +1028,7 @@ pub fn extract_signatures(pdf: &[u8]) -> Result<Vec<ExtractedSignature>> {
             field: name,
             signed_bytes: signed,
             cms_der: trim_der(contents),
-            covers_document: s2 + l2 == pdf.len(),
+            covers_document: covers_whole_file(pdf, range, contents),
             reason: read_str(b"Reason"),
             signing_time: read_str(b"M"),
         });
@@ -1036,4 +1126,74 @@ fn find_subslice(haystack: &[u8], needle: &[u8]) -> Option<usize> {
         return None;
     }
     haystack.windows(needle.len()).position(|w| w == needle)
+}
+
+#[cfg(test)]
+mod byte_range_tests {
+    use super::*;
+
+    #[test]
+    fn a_byte_range_must_be_non_negative_ordered_and_in_bounds() {
+        assert_eq!(checked_byte_range(&[0, 10, 20, 5], 25), Some([0, 10, 20, 5]));
+        assert_eq!(checked_byte_range(&[-1, 10, 20, 5], 25), None, "negative");
+        assert_eq!(checked_byte_range(&[0, 10, 20, -5], 25), None, "negative");
+        assert_eq!(checked_byte_range(&[0, i64::MAX, 20, 5], 25), None, "overflow");
+        assert_eq!(checked_byte_range(&[0, 10, i64::MAX, i64::MAX], 25), None);
+        assert_eq!(checked_byte_range(&[0, 10, 20, 6], 25), None, "past EOF");
+        assert_eq!(checked_byte_range(&[0, 21, 20, 5], 25), None, "overlap");
+        assert_eq!(checked_byte_range(&[0, 10, 20], 25), None, "three entries");
+    }
+
+    /// `prefix/Contents <hex>suffix`, and the range that leaves out `<hex>`.
+    fn doc(prefix: &str, hex: &str, suffix: &str) -> (Vec<u8>, [usize; 4]) {
+        let head = format!("{prefix}/Contents ");
+        let gap = format!("<{hex}>");
+        let pdf = format!("{head}{gap}{suffix}").into_bytes();
+        let s2 = head.len() + gap.len();
+        (pdf.clone(), [0, head.len(), s2, pdf.len() - s2])
+    }
+
+    #[test]
+    fn the_whole_file_but_its_own_contents_is_covered() {
+        let (pdf, range) = doc("%PDF-1.7 ", "3003", " %%EOF");
+        assert!(covers_whole_file(&pdf, range, &[0x30, 0x03]));
+    }
+
+    #[test]
+    fn a_gap_of_the_hex_digits_alone_covers_the_file_too() {
+        // `prepare_signature` leaves the `<` and `>` inside the signed spans.
+        let (pdf, [s1, l1, s2, l2]) = doc("%PDF-1.7 ", "3003", " %%EOF");
+        assert!(covers_whole_file(&pdf, [s1, l1 + 1, s2 - 1, l2 + 1], &[0x30, 0x03]));
+        // One digit short of the string is not it.
+        assert!(!covers_whole_file(&pdf, [s1, l1 + 2, s2 - 1, l2 + 1], &[0x30, 0x03]));
+    }
+
+    #[test]
+    fn a_range_that_skips_the_head_does_not_cover_the_file() {
+        let (pdf, [_, l1, s2, l2]) = doc("%PDF-1.7 ", "3003", " %%EOF");
+        assert!(!covers_whole_file(&pdf, [1, l1 - 1, s2, l2], &[0x30, 0x03]));
+    }
+
+    #[test]
+    fn a_gap_that_is_not_this_contents_does_not_cover_the_file() {
+        let (pdf, range) = doc("%PDF-1.7 ", "3003", " %%EOF");
+        // Same shape, other value: the gap is not this signature's /Contents.
+        assert!(!covers_whole_file(&pdf, range, &[0x30, 0x04]));
+        // A wider gap that also swallows unsigned bytes after the hex.
+        let [s1, l1, s2, l2] = range;
+        assert!(!covers_whole_file(&pdf, [s1, l1, s2 + 2, l2 - 2], &[0x30, 0x03]));
+        assert!(!covers_whole_file(&pdf, [s1, l1 - 2, s2, l2], &[0x30, 0x03]));
+        // A gap somewhere else than right after the /Contents key.
+        let other = b"%PDF-1.7 /Other <3003> %%EOF".to_vec();
+        let s2 = other.len() - 6;
+        assert!(!covers_whole_file(&other, [0, 16, s2, 6], &[0x30, 0x03]));
+    }
+
+    #[test]
+    fn a_der_length_wider_than_usize_is_left_whole() {
+        let blob = [0x30, 0x89, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff];
+        assert_eq!(trim_der(&blob), blob.to_vec());
+        let blob = [0x30, 0x88, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00];
+        assert_eq!(trim_der(&blob), blob.to_vec(), "2 + n + l overflows");
+    }
 }

@@ -101,7 +101,7 @@ fn read_request(options: &Value) -> Result<IssueRequest, String> {
     }
     let issuer_key = match parse_private_key(&key_pem).map_err(|e| format!("issuer_key: {e}"))? {
         SigningKey::Ec(key) => *key,
-        SigningKey::Rsa { .. } => {
+        SigningKey::Rsa(_) => {
             return Err("issuer_key: only EC P-256 keys can issue certificates".into())
         }
     };

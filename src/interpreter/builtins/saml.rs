@@ -1178,27 +1178,10 @@ pub(crate) fn parse_metadata(xml: &str) -> Result<Json, String> {
 // A signed response for specs
 // ---------------------------------------------------------------------------
 
-/// RSA private key `(n, d)` from a PEM (PKCS#8 or PKCS#1).
-fn private_key(pem: &str) -> Result<(Vec<u8>, Vec<u8>), String> {
-    let (n, _, d) = super::rsa_key::parse_components(pem)?;
-    let n: Vec<u8> = n.iter().skip_while(|b| **b == 0).copied().collect();
-    Ok((n, d))
-}
-
-fn rsa_sha256_sign(message: &[u8], n: &[u8], d: &[u8]) -> Result<Vec<u8>, String> {
-    let info = super::rsa_key::digest_info("sha256", message)?;
-    let k = n.len();
-    if k < info.len() + 11 {
-        return Err("the private key is too short".to_string());
-    }
-    let mut em = vec![0x00u8, 0x01];
-    em.extend(std::iter::repeat_n(0xffu8, k - info.len() - 3));
-    em.push(0x00);
-    em.extend_from_slice(&info);
-    let signature = super::crypto::do_modexp(&em, d, n)?;
-    let mut padded = vec![0u8; k.saturating_sub(signature.len())];
-    padded.extend_from_slice(&signature);
-    Ok(padded)
+/// RSA private key from a PEM (PKCS#8 or PKCS#1), held by `ring`: it signs
+/// blinded and in constant time, where `modpow` over `d` did neither.
+fn private_key(pem: &str) -> Result<super::rsa_key::RsaSigningKey, String> {
+    super::rsa_key::RsaSigningKey::from_pem(pem)
 }
 
 fn find_with_id<'a>(el: Scoped<'a>, id: &str) -> Option<Scoped<'a>> {
@@ -1211,7 +1194,11 @@ fn find_with_id<'a>(el: Scoped<'a>, id: &str) -> Option<Scoped<'a>> {
 }
 
 /// `<ds:Signature>` over the element of `xml` whose ID is `id`.
-fn signature_for(xml: &str, id: &str, n: &[u8], d: &[u8]) -> Result<String, String> {
+fn signature_for(
+    xml: &str,
+    id: &str,
+    key: &super::rsa_key::RsaSigningKey,
+) -> Result<String, String> {
     let document = parse_document(xml)?;
     let target = find_with_id(Scoped::root(&document), id)
         .ok_or_else(|| format!("no element with ID {}", id))?;
@@ -1231,7 +1218,7 @@ fn signature_for(xml: &str, id: &str, n: &[u8], d: &[u8]) -> Result<String, Stri
     let canonical = Scoped::root(&parsed)
         .only(DSIG_NS, "SignedInfo")?
         .canonical(&BTreeSet::new(), None);
-    let value = STANDARD.encode(rsa_sha256_sign(canonical.as_bytes(), n, d)?);
+    let value = STANDARD.encode(key.sign_sha256(canonical.as_bytes())?);
     Ok(format!(
         "<ds:Signature xmlns:ds=\"{DSIG_NS}\">{signed_info}\
          <ds:SignatureValue>{value}</ds:SignatureValue></ds:Signature>"
@@ -1245,7 +1232,7 @@ const RESPONSE_MARK: &str = "<!--response-signature-->";
 /// stand-in a spec signs in with. Not an identity provider — it signs
 /// whatever it is told with a key the caller supplies.
 pub(crate) fn test_response(opts: &Json) -> Result<Json, String> {
-    let (n, d) = private_key(&req_str(opts, "private_key")?)?;
+    let key = private_key(&req_str(opts, "private_key")?)?;
     let issuer = req_str(opts, "issuer")?;
     let acs_url = req_str(opts, "acs_url")?;
     let audience = req_str(opts, "audience")?;
@@ -1337,11 +1324,11 @@ pub(crate) fn test_response(opts: &Json) -> Result<Json, String> {
 
     // The assertion first: the response's digest covers the assertion's signature.
     if sign == "assertion" || sign == "both" {
-        let signature = signature_for(&xml, &assertion_id, &n, &d)?;
+        let signature = signature_for(&xml, &assertion_id, &key)?;
         xml = xml.replacen(ASSERTION_MARK, &signature, 1);
     }
     if sign == "response" || sign == "both" {
-        let signature = signature_for(&xml, &response_id, &n, &d)?;
+        let signature = signature_for(&xml, &response_id, &key)?;
         xml = xml.replacen(RESPONSE_MARK, &signature, 1);
     }
     xml = xml.replace(ASSERTION_MARK, "").replace(RESPONSE_MARK, "");
@@ -1898,8 +1885,8 @@ mod tests {
     /// Sign the assertion of an unsigned response `xml`, as `test_response`
     /// does, after the test has edited it.
     fn sign_assertion(xml: &str) -> String {
-        let (n, d) = private_key(IDP_KEY).unwrap();
-        let signature = signature_for(xml, "_a1", &n, &d).unwrap();
+        let key = private_key(IDP_KEY).unwrap();
+        let signature = signature_for(xml, "_a1", &key).unwrap();
         let issuer = format!("<saml:Issuer>{IDP}</saml:Issuer>");
         let at = xml.rfind(&issuer).unwrap() + issuer.len();
         STANDARD.encode(format!("{}{}{}", &xml[..at], signature, &xml[at..]))

@@ -16,7 +16,7 @@ use std::fs::File;
 use std::io::BufReader;
 use std::rc::Rc;
 
-use calamine::{open_workbook, Reader, Xlsx};
+use calamine::{Reader, Xlsx};
 use csv::ReaderBuilder;
 use std::io::Write;
 
@@ -110,14 +110,7 @@ fn parse_csv_file(path: &str) -> Result<Value, String> {
 }
 
 fn parse_excel_file(path: &str, sheet: Option<&str>) -> Result<Value, String> {
-    // SECURITY: calamine parses the ZIP-embedded XML with a transitive
-    // quick-xml < 0.41, which carries the DoS advisories RUSTSEC-2026-0194 /
-    // -0195 (quadratic attribute scan, unbounded namespace allocation). No
-    // upstream release reaches quick-xml >= 0.41 yet, so treat `path` as
-    // trusted input — do not parse attacker-supplied spreadsheets on a request
-    // path without an out-of-band size/timeout sandbox. Tracked in
-    // tasks/todo/transitive-quick-xml-dos-spreadsheets.md.
-    let mut workbook = open_xlsx(path)?;
+    let mut workbook = open_xlsx(path, "Spreadsheet.excel")?;
     let sheet_name = match sheet {
         Some(name) => {
             if !workbook.sheet_names().iter().any(|n| n == name) {
@@ -141,7 +134,7 @@ fn parse_excel_file(path: &str, sheet: Option<&str>) -> Result<Value, String> {
 
 /// Every sheet of the workbook, in workbook order: name => rows.
 fn parse_excel_sheets(path: &str) -> Result<Value, String> {
-    let mut workbook = open_xlsx(path)?;
+    let mut workbook = open_xlsx(path, "Spreadsheet.excel_sheets")?;
     let mut sheets = HashPairs::default();
     for name in workbook.sheet_names() {
         let rows = read_sheet(&mut workbook, &name, "Spreadsheet.excel_sheets")?;
@@ -153,9 +146,101 @@ fn parse_excel_sheets(path: &str) -> Result<Value, String> {
     Ok(Value::Hash(Rc::new(RefCell::new(sheets))))
 }
 
-fn open_xlsx(path: &str) -> Result<Xlsx<BufReader<File>>, String> {
-    // SECURITY: treat `path` as trusted input — see parse_excel_file.
-    open_workbook(path).map_err(|e| format!("Spreadsheet.excel() cannot open {}: {}", path, e))
+/// Open a workbook through the SEC-006 jail and `O_NOFOLLOW`, like `File.*`
+/// and `Spreadsheet.csv_file`. `calamine::open_workbook` took the string as
+/// given, so under `soli serve` a request that chose the path could read any
+/// workbook the process could reach, or follow a planted symlink out of the
+/// app root.
+///
+/// A workbook is untrusted input as soon as an app imports what its users
+/// upload, so it is bounded before calamine sees it: the file itself
+/// ([`max_workbook_bytes`]) and the sum of the sizes its zip directory
+/// declares once inflated ([`max_inflated_workbook_bytes`]) — the parts
+/// calamine reads into memory. A panic inside the parser becomes an error
+/// (see [`guard_parser`]).
+fn open_xlsx(path: &str, op: &str) -> Result<Xlsx<BufReader<File>>, String> {
+    let resolved = crate::interpreter::builtins::file::resolve_readable_path(path, op)?;
+    let mut file = crate::interpreter::builtins::file::open_for_read(&resolved, false)
+        .map_err(|e| format!("{}() cannot open {}: {}", op, path, e))?;
+    check_workbook_size(&mut file, op, path)?;
+    guard_parser(op, || {
+        Xlsx::new(BufReader::new(file)).map_err(|e| format!("{}() cannot open {}: {}", op, path, e))
+    })
+}
+
+/// Default cap on a workbook file read by `Spreadsheet.excel*`: 50 MiB.
+const DEFAULT_MAX_WORKBOOK_BYTES: u64 = 50 * 1024 * 1024;
+/// Default cap on the inflated size of a workbook's parts: 512 MiB.
+const DEFAULT_MAX_INFLATED_WORKBOOK_BYTES: u64 = 512 * 1024 * 1024;
+
+fn env_bytes(name: &str, default: u64) -> u64 {
+    std::env::var(name)
+        .ok()
+        .and_then(|value| value.trim().parse::<u64>().ok())
+        .filter(|&bytes| bytes > 0)
+        .unwrap_or(default)
+}
+
+/// `SOLI_SPREADSHEET_MAX_BYTES`, default 50 MiB.
+fn max_workbook_bytes() -> u64 {
+    env_bytes("SOLI_SPREADSHEET_MAX_BYTES", DEFAULT_MAX_WORKBOOK_BYTES)
+}
+
+/// `SOLI_SPREADSHEET_MAX_INFLATED_BYTES`, default 512 MiB.
+fn max_inflated_workbook_bytes() -> u64 {
+    env_bytes(
+        "SOLI_SPREADSHEET_MAX_INFLATED_BYTES",
+        DEFAULT_MAX_INFLATED_WORKBOOK_BYTES,
+    )
+}
+
+/// Refuse a workbook larger than the caps before it is parsed, then rewind.
+/// The inflated total comes from the zip's central directory, which a hostile
+/// file can understate; it stops the honest zip bomb, and the parser's own
+/// bounds (calamine ≥ 0.38, RUSTSEC-2026-0436) stop the rest.
+fn check_workbook_size(file: &mut File, op: &str, path: &str) -> Result<(), String> {
+    use std::io::{Seek, SeekFrom};
+    let len = file
+        .metadata()
+        .map_err(|e| format!("{}() cannot read {}: {}", op, path, e))?
+        .len();
+    let max = max_workbook_bytes();
+    if len > max {
+        return Err(format!(
+            "{}() {} is {} bytes, over the {} byte limit (SOLI_SPREADSHEET_MAX_BYTES)",
+            op, path, len, max
+        ));
+    }
+    let inflated = guard_parser(op, || {
+        let archive = zip::ZipArchive::new(&mut *file)
+            .map_err(|e| format!("{}() {} is not an xlsx workbook: {}", op, path, e))?;
+        // `None` when the total does not fit the type: over any cap.
+        Ok(archive
+            .decompressed_size()
+            .map_or(u64::MAX, |size| u64::try_from(size).unwrap_or(u64::MAX)))
+    })?;
+    let max_inflated = max_inflated_workbook_bytes();
+    if inflated > max_inflated {
+        return Err(format!(
+            "{}() {} inflates to {} bytes, over the {} byte limit (SOLI_SPREADSHEET_MAX_INFLATED_BYTES)",
+            op, path, inflated, max_inflated
+        ));
+    }
+    file.seek(SeekFrom::Start(0))
+        .map_err(|e| format!("{}() cannot read {}: {}", op, path, e))?;
+    Ok(())
+}
+
+/// Run a parsing step, turning a panic inside the zip or spreadsheet parser
+/// into an error: a malformed upload must fail its own call, not the request
+/// (or the job) around it.
+fn guard_parser<T>(op: &str, parse: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(parse)).unwrap_or_else(|_| {
+        Err(format!(
+            "{}() could not parse the workbook: the file is malformed",
+            op
+        ))
+    })
 }
 
 /// One sheet as an array of hashes keyed by its first row.
@@ -164,9 +249,11 @@ fn read_sheet(
     sheet_name: &str,
     caller: &str,
 ) -> Result<Value, String> {
-    let range = workbook
-        .worksheet_range(sheet_name)
-        .map_err(|e| format!("{}() error reading sheet: {}", caller, e))?;
+    let range = guard_parser(caller, || {
+        workbook
+            .worksheet_range(sheet_name)
+            .map_err(|e| format!("{}() error reading sheet: {}", caller, e))
+    })?;
 
     let mut rows: Vec<Value> = Vec::new();
     let mut headers: Vec<String> = Vec::new();
@@ -326,22 +413,13 @@ fn csv_field(cell: &str) -> String {
 
 fn write_csv_file(data: &Rc<RefCell<Vec<Value>>>, path: &str) -> Result<Value, String> {
     let csv_content = to_csv_string(data)?;
-    let path =
-        &crate::interpreter::builtins::file::resolve_readable_path(path, "Spreadsheet.csv_write")?;
-    let mut file = std::fs::File::create(path).map_err(|e| {
-        format!(
-            "Spreadsheet.csv_write() cannot create {}: {}",
-            path.display(),
-            e
-        )
-    })?;
-    std::io::Write::write_all(&mut file, csv_content.as_bytes()).map_err(|e| {
-        format!(
-            "Spreadsheet.csv_write() cannot write to {}: {}",
-            path.display(),
-            e
-        )
-    })?;
+    // The jail and `O_NOFOLLOW`, as `File.write`: `File::create` followed a
+    // symlink planted at the target and truncated whatever it pointed to.
+    crate::interpreter::builtins::file::write_bytes_jailed(
+        path,
+        "Spreadsheet.csv_write",
+        csv_content.as_bytes(),
+    )?;
     Ok(Value::Null)
 }
 
@@ -400,9 +478,17 @@ fn write_excel_workbook(sheets: Vec<SheetSpec>, path: &str) -> Result<Value, Str
             .push((spec.name, sheet_rows(&spec.data, spec.columns)?));
     }
 
-    workbook
-        .save(std::path::Path::new(path))
-        .map_err(|e| format!("Spreadsheet.excel_write() cannot write to {}: {}", path, e))?;
+    let bytes = workbook
+        .to_bytes()
+        .map_err(|e| format!("Spreadsheet.excel_write() cannot build {}: {}", path, e))?;
+    // Built in memory, then written through the jail and `O_NOFOLLOW` like
+    // `File.write`. `File::create(path)` took the string as given: a request
+    // choosing the path could truncate any file the process could write.
+    crate::interpreter::builtins::file::write_bytes_jailed(
+        path,
+        "Spreadsheet.excel_write",
+        &bytes,
+    )?;
 
     Ok(Value::Null)
 }
@@ -541,7 +627,8 @@ struct XlsxWorkbook {
 }
 
 impl XlsxWorkbook {
-    fn save(&self, path: &std::path::Path) -> Result<(), String> {
+    /// The `.xlsx` package, as bytes.
+    fn to_bytes(&self) -> Result<Vec<u8>, String> {
         use std::fmt::Write as _;
         let mut content_types = String::from(CONTENT_TYPES_HEAD);
         let mut workbook = String::from(WORKBOOK_HEAD);
@@ -568,8 +655,7 @@ impl XlsxWorkbook {
             "<Relationship Id=\"rId{styles_id}\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles\" Target=\"styles.xml\"/></Relationships>"
         );
 
-        let file = File::create(path).map_err(|e| e.to_string())?;
-        let mut zip = zip::ZipWriter::new(file);
+        let mut zip = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
         let options = zip::write::SimpleFileOptions::default()
             .compression_method(zip::CompressionMethod::Deflated);
         let mut parts: Vec<(String, String)> = vec![
@@ -592,8 +678,7 @@ impl XlsxWorkbook {
             zip.write_all(content.as_bytes())
                 .map_err(|e| e.to_string())?;
         }
-        zip.finish().map_err(|e| e.to_string())?;
-        Ok(())
+        Ok(zip.finish().map_err(|e| e.to_string())?.into_inner())
     }
 }
 

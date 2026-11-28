@@ -28,7 +28,7 @@ use cms::signed_data::{
     CertificateSet, EncapsulatedContentInfo, SignedData, SignerIdentifier, SignerInfo, SignerInfos,
 };
 
-use super::crypto::{do_modexp, do_pkcs1_pad};
+use super::crypto::do_modexp;
 
 // --- OIDs ------------------------------------------------------------------
 
@@ -54,15 +54,15 @@ const SHA256_DIGESTINFO_PREFIX: [u8; 19] = [
 
 // --- key material ----------------------------------------------------------
 
-/// A parsed signing key. RSA is stored as raw big-endian `(n, d)` octets so it
-/// flows straight into the in-house `modexp`; EC is a ready `p256` signer.
+/// A parsed signing key: RSA held by `ring` (see
+/// [`super::rsa_key::RsaSigningKey`]), EC as a ready `p256` signer.
+///
+/// RSA was stored as raw `(n, d)` octets and signed with `BigUint::modpow`
+/// over the private exponent — no blinding, and a running time that depends
+/// on the bits of `d`, so a service signing documents a third party submits
+/// gave that party a timing oracle on its key.
 pub enum SigningKey {
-    /// `n` is the modulus with any DER sign byte stripped (so `n.len()` is the
-    /// true key size in octets); `d` is the private exponent.
-    Rsa {
-        n: Vec<u8>,
-        d: Vec<u8>,
-    },
+    Rsa(Box<super::rsa_key::RsaSigningKey>),
     Ec(Box<p256::ecdsa::SigningKey>),
 }
 
@@ -135,22 +135,19 @@ pub fn parse_private_key(input: &str) -> Result<SigningKey, String> {
     let (label, der) = pem_to_der(input)?;
 
     if label.contains("RSA PRIVATE KEY") {
-        let key = Pkcs1::from_der(&der).map_err(|e| format!("RSA PKCS#1 parse error: {e}"))?;
-        return Ok(SigningKey::Rsa {
-            n: strip_leading_zeros(key.modulus.as_bytes()),
-            d: key.private_exponent.as_bytes().to_vec(),
-        });
+        Pkcs1::from_der(&der).map_err(|e| format!("RSA PKCS#1 parse error: {e}"))?;
+        return Ok(SigningKey::Rsa(Box::new(
+            super::rsa_key::RsaSigningKey::from_pkcs1_der(&der)?,
+        )));
     }
 
     // PKCS#8: dispatch on the inner algorithm.
     let pki = PrivateKeyInfo::from_der(&der).map_err(|e| format!("PKCS#8 parse error: {e}"))?;
     if pki.algorithm.oid == OID_RSA_ENCRYPTION {
-        let key =
-            Pkcs1::from_der(pki.private_key).map_err(|e| format!("RSA PKCS#1 parse error: {e}"))?;
-        Ok(SigningKey::Rsa {
-            n: strip_leading_zeros(key.modulus.as_bytes()),
-            d: key.private_exponent.as_bytes().to_vec(),
-        })
+        Pkcs1::from_der(pki.private_key).map_err(|e| format!("RSA PKCS#1 parse error: {e}"))?;
+        Ok(SigningKey::Rsa(Box::new(
+            super::rsa_key::RsaSigningKey::from_pkcs1_der(pki.private_key)?,
+        )))
     } else if pki.algorithm.oid == OID_EC_PUBLIC_KEY {
         let sk = p256::ecdsa::SigningKey::from_pkcs8_der(&der)
             .map_err(|e| format!("EC PKCS#8 parse error (only P-256 is supported): {e}"))?;
@@ -260,13 +257,12 @@ pub fn build_cms(
         .map_err(|e| format!("encode signed attrs: {e}"))?;
 
     let (signature, sig_alg) = match &signer.key {
-        SigningKey::Rsa { n, d } => {
-            let digest = sha256(&signed_attrs_der);
-            let mut digest_info = SHA256_DIGESTINFO_PREFIX.to_vec();
-            digest_info.extend_from_slice(&digest);
-            let em =
-                do_pkcs1_pad(&digest_info, n.len(), 1).map_err(|e| format!("PKCS#1 pad: {e}"))?;
-            let sig = do_modexp(&em, d, n).map_err(|e| format!("RSA sign: {e}"))?;
+        SigningKey::Rsa(key) => {
+            // sha256WithRSAEncryption over the DER of the signed attributes:
+            // `ring` hashes, pads (PKCS#1 v1.5) and signs, blinded.
+            let sig = key
+                .sign_sha256(&signed_attrs_der)
+                .map_err(|e| format!("RSA sign: {e}"))?;
             (sig, alg(OID_RSA_ENCRYPTION, Some(der_null()?)))
         }
         SigningKey::Ec(sk) => {

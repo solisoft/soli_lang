@@ -125,7 +125,7 @@ lsp = ["dep:tower-lsp-server"]
 # `Mailer`, `Imap` and `Pop3` — composing, sending and reading mail.
 # Without it the mailer prelude is empty and the three classes are absent.
 mail = ["dep:mail-builder", "dep:mail-parser"]
-eui = ["dep:eui-proto", "dep:eui-score", "dep:blake3", "dep:ring"]
+eui = ["dep:eui-proto", "dep:eui-score", "dep:blake3"]
 # Native typed kernels: a top-level function typed Int/Float/Bool end to end
 # that only does arithmetic, comparisons, branches and loops is compiled to
 # machine code with Cranelift when a script loads (src/native/). Off, every
@@ -336,15 +336,18 @@ image = { version = "0.25", default-features = false, features = ["jpeg", "png",
 # below 0.41, which left RUSTSEC-2026-0194 / -0195 (quadratic duplicate-attribute
 # scan; unbounded namespace-declaration allocation) waived in `.cargo/audit.toml`
 # — the only *vulnerability*, as opposed to unmaintained-crate, advisory this
-# repository has ever waived. calamine 0.36.1 requires quick-xml ^0.41, so the
-# waiver is gone. Do not lower the floor without putting it back.
-calamine = { version = "0.36", optional = true }
+# repository has ever waived. calamine 0.36.1 required quick-xml ^0.41, so the
+# waiver went. 0.38 is the floor now: it fixes RUSTSEC-2026-0436 (a panic and an
+# unbounded allocation in the OLE2 parser that `Xlsx::new` runs on every file,
+# to detect an encrypted workbook) and is the first release on zip 9, which
+# retired the vendored copy. Do not lower it.
+calamine = { version = "0.38", optional = true }
 csv = { version = "1.3", optional = true }
 # Writing xlsx is in-tree (`XlsxSheet` in builtins/spreadsheet.rs): six XML
 # parts in a zip, on the same `zip` build calamine already uses.
 # 9.0: every release before 9.0.3 was yanked on 2026-10-16 for security
 # advisories (GHSA-vv5m-jxxh-4627, GHSA-4v9h-p7m9-rh26, GHSA-4684-h2q9-2vcp,
-# more announced), and calamine is patched below to build on it.
+# more announced); calamine 0.38 builds on it.
 zip = { version = "9.0", default-features = false, features = ["deflate"], optional = true }
 
 # Pinned transitive dependency. Floor >=0.3.47 fixes RUSTSEC-2026-0009; ceiling
@@ -395,7 +398,10 @@ eui-score = { git = "https://github.com/solisoft/eui", rev = "1d46731", optional
 #   [patch."https://github.com/solisoft/event_stream"]
 #   es-client = { path = "../es/crates/es-client" }
 es-client = { git = "https://github.com/solisoft/event_stream", rev = "5e2a6ea", optional = true }
-ring = { version = "0.17", optional = true }
+# RSA signing (`RsaKey.sign`, PAdES, SAML test responses): blinded and constant
+# time, where `BigUint::modpow` over the private exponent was neither. Also the
+# EUI frame hashing. Already in every build through rustls and jsonwebtoken.
+ring = "0.17"
 blake3 = { version = "1", optional = true }
 # `.soligraph.toml` config for `soli graph build` on non-Soli repos.
 toml = "0.8"
@@ -583,13 +589,7 @@ opt-level = 3
 lto = "fat"
 codegen-units = 1
 
-# calamine 0.36.1, the latest release, requires zip ^8.6, and every zip 8.x
-# release is yanked for security advisories (see `zip` above). This is that
-# release with tafia/calamine#741 applied — `zip = "9.0"` and the 4-line
-# `file_names()` change in src/utils.rs — see vendor/calamine/VENDORED.md.
-# Delete it, and the directory, as soon as calamine publishes on zip 9.
 [patch.crates-io]
-calamine = { path = "vendor/calamine" }
 # mail-builder reads the clock through std::time, which panics in a Worker:
 # vendor/mail-builder/VENDORED.md.
 mail-builder = { path = "vendor/mail-builder" }

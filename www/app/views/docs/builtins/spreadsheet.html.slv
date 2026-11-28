@@ -154,4 +154,10 @@ Spreadsheet.excel_write(rows, "tmp/orders.xlsx", ["Date", "N°", "Montant (€)"
         </div>
     </section>
 
+    <section class="mb-12" id="section-untrusted">
+        <h2 class="text-2xl font-bold text-white mb-4">Paths and Untrusted Workbooks</h2>
+        <p class="text-gray-400 mb-4">Every path goes through the same jail as <code class="text-amber-400">File.*</code>: under <code class="text-amber-400">soli serve</code> (and in jobs) a relative path resolves under the app root, a path that escapes it raises <code class="text-amber-400">&hellip; escapes the app-root jail</code>, and a symlink is not followed &mdash; for <code class="text-amber-400">csv_file</code>, <code class="text-amber-400">excel</code> and <code class="text-amber-400">excel_sheets</code> as for <code class="text-amber-400">csv_write</code> and <code class="text-amber-400">excel_write</code>, which cannot truncate a file outside the app. <code class="text-amber-400">soli run</code>, the REPL and the test runner install no jail, as for <code class="text-amber-400">File</code>.</p>
+        <p class="text-gray-400 mb-4">A workbook a user uploaded is untrusted input. Before parsing one, <code class="text-amber-400">excel</code> and <code class="text-amber-400">excel_sheets</code> refuse a file over <code class="text-amber-400">SOLI_SPREADSHEET_MAX_BYTES</code> (default 50&nbsp;MiB) and one whose parts declare more than <code class="text-amber-400">SOLI_SPREADSHEET_MAX_INFLATED_BYTES</code> once inflated (default 512&nbsp;MiB); a file the parser cannot read &mdash; or panics on &mdash; raises an error of that call. The reader is calamine 0.38, which fixes RUSTSEC-2026-0436 (a panic and an unbounded allocation in the OLE2 parser every <code class="text-amber-400">.xlsx</code> goes through). These caps bound memory, not time: import large uploads in a background job rather than in the request.</p>
+    </section>
+
 </div>

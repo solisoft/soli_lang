@@ -2549,6 +2549,12 @@ worker for minutes).
 Crypto.modexp("04", "0d", "01f1")   # => "01bd"
 ```
 
+> **Not for a private exponent.** `modexp` is schoolbook exponentiation: no
+> blinding, and a running time that depends on the bits of `exp`. Raising a
+> padded digest to an RSA key's `d` with it leaks that key through timing to
+> anyone who can have you sign chosen messages. Sign with `RsaKey.sign`, which
+> uses `ring`; keep `modexp` for public-exponent work (verifying) and interop.
+
 #### Crypto.pkcs1_pad(data, key_size, block_type?)
 
 Applies PKCS#1 v1.5 padding (RFC 8017): `EM = 0x00 || BT || PS || 0x00 || data`,
@@ -2572,14 +2578,10 @@ that every padding octet is `0xFF`.
 > attacker-supplied ciphertext — that is a Bleichenbacher padding oracle.
 
 ```soli
-# RSA sign/verify round-trip: sign a digest with the private exponent d,
-# verify by raising the signature to the public exponent e.
-digest      = Crypto.sha256(canonical_xml)        # 32-byte hex digest
-em          = Crypto.pkcs1_pad(digest, key_octets) # block type 1
-signature   = Crypto.modexp(em, rsa_d, rsa_n)      # sign
-
-recovered   = Crypto.pkcs1_unpad(Crypto.modexp(signature, rsa_e, rsa_n))
-assert(recovered == digest)
+# Verify an RSA signature by hand: raise it to the public exponent e and
+# unpad. (To sign, use RsaKey.sign: see the note under Crypto.modexp.)
+recovered = Crypto.pkcs1_unpad(Crypto.modexp(signature, rsa_e, rsa_n))
+assert(recovered.ends_with?(Crypto.sha256(canonical_xml)))
 ```
 
 #### Xml.c14n_exclusive(xml, inclusive_prefixes_or_options?)
@@ -2823,7 +2825,28 @@ Parses an RSA private key — PKCS#8 (`-----BEGIN PRIVATE KEY-----`) or PKCS#1
 (the verification side, `X509.public_key`, only yields `(n, e)`).
 
 **Returns:** Hash — `{ "algorithm": "RSA", "n": hex, "e": hex, "d": hex, "bits": Int }`.
-Sign with the private exponent: `Crypto.modexp(padded, key["d"], key["n"])`.
+To sign, use `RsaKey.sign(pem, message)`, not `Crypto.modexp(padded, key["d"], key["n"])`:
+`modexp` is neither blinded nor constant-time, so its running time leaks the
+private exponent to anyone who can make you sign many messages.
+
+#### RsaKey.sign(private_pem, message, algorithm?)
+
+Signs `message` with RSASSA-PKCS1-v1_5 (RFC 8017) — the counterpart of
+`RsaKey.verify`, and what XML-DSig `rsa-sha256`, JWT `RS256` and
+`openssl dgst -sha256 -sign` produce. The signature is computed by `ring`,
+blinded and in constant time.
+
+**Parameters:**
+- `private_pem` (String) - PKCS#8 (`-----BEGIN PRIVATE KEY-----`) or PKCS#1 (`-----BEGIN RSA PRIVATE KEY-----`) PEM, 2048 to 8192 bits
+- `message` (String or byte Array) - The data to sign, exactly as it will be verified
+- `algorithm` (String, optional) - digest: `"sha256"` (default) or `"sha512"`
+
+**Returns:** String — the signature, base64. Raises on an unreadable key, a key under 2048 bits, or another algorithm.
+
+```soli
+signature = RsaKey.sign(sp_private_key_pem, canonical_signed_info)
+RsaKey.verify(sp_public_key_pem, canonical_signed_info, signature)   # => true
+```
 
 #### RsaKey.public_from_pem(pem)
 
@@ -2884,17 +2907,13 @@ Hex.encode(Base64.decode(incoming_b64))
 #### Putting it together: signing an envelope
 
 ```soli
-key = RsaKey.private_from_pem(sp_private_key_pem)
-
 # 1. Digest the referenced element (enveloped transform; no Signature yet)
 ref_canon  = Xml.c14n_exclusive(doc, {"id": "_obj1", "enveloped_signature": true})
 digest_b64 = Base64.encode(Hex.decode(Crypto.sha256(ref_canon)))
 
 # 2. Build SignedInfo (CanonicalizationMethod=exc-c14n, SignatureMethod=rsa-sha256,
 #    Reference with enveloped+exc-c14n transforms and DigestValue=digest_b64), then sign it:
-si_hash   = Crypto.sha256(Xml.c14n_exclusive(signed_info))
-em        = Crypto.pkcs1_pad("3031300d060960864801650304020105000420" + si_hash, key["bits"] / 8)
-sig_b64   = Base64.encode(Hex.decode(Crypto.modexp(em, key["d"], key["n"])))
+sig_b64   = RsaKey.sign(sp_private_key_pem, Xml.c14n_exclusive(signed_info))
 
 # 3. Assemble <ds:Signature> (SignedInfo + <ds:SignatureValue>sig_b64</...> + KeyInfo)
 #    and envelope it into the document. Verifies cleanly under any XML-DSig library.
@@ -7841,6 +7860,25 @@ Spreadsheet.excel_write({
   sheets there is no third argument: put `columns` inside the sheet.
 - `excel_sheets` returns the shape `excel_write` takes, so a workbook
   round-trips.
+
+### Paths and untrusted workbooks
+
+Every path goes through the same jail as `File.*`: under `soli serve` (and in
+jobs) a relative path resolves under the app root, a path that escapes it
+raises `… escapes the app-root jail`, and a symlink is not followed — for
+`csv_file`, `excel` and `excel_sheets` as for `csv_write` and `excel_write`,
+which no longer truncate a file outside the app. `soli run`, the REPL and the
+test runner install no jail, as for `File`.
+
+A workbook a user uploaded is untrusted input. Before parsing one,
+`excel` and `excel_sheets` refuse a file over `SOLI_SPREADSHEET_MAX_BYTES`
+(default 50 MiB) and one whose parts declare more than
+`SOLI_SPREADSHEET_MAX_INFLATED_BYTES` once inflated (default 512 MiB); a file
+the parser cannot read — or panics on — raises an error of that call. The
+reader is calamine 0.38, which fixes RUSTSEC-2026-0436 (a panic and an
+unbounded allocation in the OLE2 parser every `.xlsx` goes through). These
+caps bound memory, not time: import large uploads in a background job rather
+than in the request.
 
 ## See Also
 

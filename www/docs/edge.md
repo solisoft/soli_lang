@@ -52,7 +52,11 @@ The usual application, set up to deploy as a Worker:
   once per isolate; later requests take a few milliseconds.
 - **Every request** goes through `handle_request`, the function `soli serve`'s
   workers call: middleware, CSRF, routing, the action on the VM, the view and
-  its layout.
+  its layout. As under `soli serve`, a path in the framework's reserved
+  namespace (`/__soli/…`, `/__solidev/…`, `/__dev/…`) that the edge does not
+  serve itself answers 404 and never reaches your routes, and a body over
+  `set_max_body_size` (`SOLI_MAX_BODY_SIZE`, 8 MiB by default) answers 413:
+  the Worker stops reading it at the cap, before it reaches wasm memory.
 - **Model queries** go to Cloudflare D1 through the Worker's binding, to
   PostgreSQL through a JavaScript driver (usually via Hyperdrive), or
   to SoliDB over HTTP(S) with `fetch`. The interpreter is synchronous and they
@@ -419,7 +423,10 @@ What uploads cannot do on the edge:
 
 - **Large files.** The body arrives whole, and a file is copied a few times on
   its way into R2 (the request, wasm memory, the parsed part, its base64 form),
-  against an isolate limit of 128 MB: keep `max_size` to about 20 MB.
+  against an isolate limit of 128 MB: keep `max_size` to about 20 MB. A body
+  is refused (413) past `set_max_body_size`, 8 MiB unless the app raises it —
+  `set_max_body_size(20 * 1024 * 1024)` in `config/`, or
+  `SOLI_MAX_BODY_SIZE` under `[vars]`, for 20 MB uploads.
 - **Resumable (tus) uploads and `direct_upload`**, which need a disk or S3
   credentials.
 
@@ -690,6 +697,7 @@ build ("… is not available on the edge (Cloudflare Workers) build").
 | `this Worker carries no postgres driver` | the build did not see the dialect: `soli edge build --sql postgres` |
 | `no Queue binding named JOBS` | `wrangler.toml` lacks the `[[queues.producers]]` block for the job queue |
 | `MySQL is not available on the edge build` | the app's connection is MySQL: move it to Postgres (Hyperdrive), D1 or SoliDB |
+| `Request body too large` (413) | the body is over `set_max_body_size` (8 MiB by default); raise it in `config/` or with `SOLI_MAX_BODY_SIZE` under `[vars]` |
 | `CSRF check failed: Origin … does not match` (403) | a POST whose Origin is another site — the same-origin gate of `soli serve`; list your other public hostnames in `SOLI_APP_HOSTS` |
 | `no R2 binding named ATTACHMENTS` | `wrangler.toml` lacks the `[[r2_buckets]]` block an `r2` attachment needs |
 | an image URL with `?w=` answers the full-size original | no `[images]` binding in `wrangler.toml` |

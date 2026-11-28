@@ -191,6 +191,14 @@ pub extern "C" fn soli_live(ptr: *mut u8, len: usize) -> *const u8 {
     })
 }
 
+/// The app's request-body cap in bytes — `set_max_body_size`, or
+/// `SOLI_MAX_BODY_SIZE`, 8 MiB by default. The host reads a body only up to
+/// it, and answers 413 past it, before anything is copied into wasm memory.
+#[no_mangle]
+pub extern "C" fn soli_max_body_size() -> usize {
+    solilang::interpreter::builtins::body_limit::get_max_body_size()
+}
+
 #[no_mangle]
 pub extern "C" fn soli_response_len() -> usize {
     RESPONSE.with(|cell| cell.borrow().len())

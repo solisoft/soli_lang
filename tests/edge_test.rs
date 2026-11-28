@@ -191,7 +191,7 @@ fn example_files() -> Vec<(String, Vec<u8>)> {
     for (path, contents) in files.iter_mut() {
         if path == "/app/config/routes.sl" {
             contents.extend_from_slice(
-                b"\nrouter_live(\"probe_tally\", \"live#probe_tally\")\npost(\"/probe\", \"probe#create\")\npatch(\"/probe\", \"probe#update\")\nget(\"/probe/jobs\", \"probe#jobs\")\nget(\"/probe/tenant\", \"probe#tenant\")\nget(\"/probe/mail\", \"probe#mail\")\nget(\"/probe/boom\", \"probe#boom\")\n",
+                b"\nrouter_live(\"probe_tally\", \"live#probe_tally\")\npost(\"/probe\", \"probe#create\")\npatch(\"/probe\", \"probe#update\")\nget(\"/probe/jobs\", \"probe#jobs\")\nget(\"/probe/tenant\", \"probe#tenant\")\nget(\"/probe/mail\", \"probe#mail\")\nget(\"/probe/boom\", \"probe#boom\")\npatch(\"/:section/probe\", \"probe#update\")\n",
             );
         }
     }
@@ -271,6 +271,7 @@ fn boots_a_mounted_app_and_answers_requests() {
                 ("SOLI_RUNTIME".to_string(), "cloudflare-workers".to_string()),
                 ("SOLI_VERSION".to_string(), "test".to_string()),
                 ("SOLI_HTTP_ALLOW_HOSTS".to_string(), "127.0.0.1".to_string()),
+                ("SOLI_MAX_BODY_SIZE".to_string(), "65536".to_string()),
             ]);
             edge::boot(Path::new("/app")).expect("boot");
 
@@ -348,6 +349,53 @@ fn boots_a_mounted_app_and_answers_requests() {
             });
             assert_eq!(response.status, 403);
             assert!(String::from_utf8_lossy(&response.body).contains("CSRF check failed"));
+
+            // The reserved `/__soli/…` namespace is exempt from the CSRF gate,
+            // which is sound only because no application route ever sees it:
+            // `soli serve` answers 404 for what no framework handler claimed.
+            // The edge must too, or `patch("/:section/probe")` takes a
+            // cross-site PATCH to `/__soli/probe` with no CSRF check at all.
+            let forged = edge::handle(EdgeRequest {
+                method: "PATCH".to_string(),
+                path: "/__soli/probe".to_string(),
+                query: String::new(),
+                headers: vec![
+                    ("host".to_string(), "cf.example.test".to_string()),
+                    ("origin".to_string(), "https://evil.example".to_string()),
+                    ("content-type".to_string(), "application/x-www-form-urlencoded".to_string()),
+                ],
+                body: b"title=forged".to_vec(),
+            });
+            assert_eq!(
+                forged.status,
+                404,
+                "{}",
+                String::from_utf8_lossy(&forged.body)
+            );
+            // The same route, outside the reserved namespace, still answers.
+            let routed = edge::handle(EdgeRequest {
+                method: "PATCH".to_string(),
+                path: "/notes/probe".to_string(),
+                query: String::new(),
+                headers: vec![
+                    ("host".to_string(), "cf.example.test".to_string()),
+                    ("content-type".to_string(), "application/x-www-form-urlencoded".to_string()),
+                ],
+                body: b"title=routed".to_vec(),
+            });
+            assert_eq!(String::from_utf8(routed.body).unwrap(), "patched routed");
+            // A body over the app's cap is refused before anything parses it,
+            // as `soli serve` refuses it while reading.
+            let oversized = post("application/octet-stream", vec![b'x'; 65537]);
+            assert_eq!(oversized.status, 413);
+            assert_ne!(
+                post("application/octet-stream", vec![b'x'; 65536]).status,
+                413,
+                "a body at the cap is accepted"
+            );
+
+            // The framework's own scripts in that namespace are still served.
+            assert_eq!(get("/__soli/nav.js", "").0, 200);
 
             // A form's `_method` field picks the verb, as under `soli serve`.
             let response = post(

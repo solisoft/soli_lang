@@ -13,8 +13,9 @@
 #   solidb-driver     solidb-client (git; crates.io's 0.7.0 is not that code)
 #   pdf               soli-pdf, which vendors a patched printpdf
 #   codegraph         soli-codegraph (path crate, not published)
-#   office            calamine 0.36 needs zip 8.x, all yanked; the repo
-#                     patches in vendor/calamine, which publish would drop
+#   office            left out while calamine 0.36 needed a vendored patch for
+#                     zip 9; calamine 0.38 builds on zip 9 from crates.io, so
+#                     it can come back once a dry run here confirms it
 # Users who need them install the release binaries or the Docker image.
 #
 #   ./scripts/publish-crate.sh            # dry run: package and build

@@ -2,19 +2,20 @@
 //!
 //! The verification side ([`X509.public_key`]) extracts `(n, e)` from a
 //! certificate. To *sign* — produce an XML-DSig enveloped signature — a Service
-//! Provider needs its own `(n, d)`. `RsaKey.private_from_pem` parses a PKCS#8
-//! (`-----BEGIN PRIVATE KEY-----`) or PKCS#1 (`-----BEGIN RSA PRIVATE KEY-----`)
-//! PEM key and returns the components as hex, ready for [`Crypto.modexp`]:
+//! Provider signs with its private key: `RsaKey.sign(pem, signed_info)`
+//! returns the RSASSA-PKCS1-v1_5 signature, computed by `ring` (blinded,
+//! constant time). `RsaKey.private_from_pem` still returns the components as
+//! hex, but raising a digest to `d` with [`Crypto.modexp`] is not blinded and
+//! leaks the key's bits through its timing: sign with `RsaKey.sign`.
 //!
 //! ```text
-//! key = RsaKey.private_from_pem(sp_private_key_pem)
-//! sig = Crypto.modexp(padded_digest_info, key["d"], key["n"])
+//! sig = RsaKey.sign(sp_private_key_pem, canonical_signed_info)   # base64
 //! ```
 //!
-//! We deliberately parse with the lightweight RustCrypto ASN.1 crates
-//! (`der` / `pkcs1` / `pkcs8`) instead of the `rsa` crate, whose Marvin-attack
-//! advisory (RUSTSEC-2023-0071) has no fixed release. We only read key
-//! material here — none of `rsa`'s timing-sensitive operations are used.
+//! Signing goes through `ring` ([`RsaSigningKey`]). Parsing and verifying
+//! use the lightweight RustCrypto ASN.1 crates (`der` / `pkcs1` / `pkcs8`)
+//! instead of the `rsa` crate, whose Marvin-attack advisory
+//! (RUSTSEC-2023-0071) has no fixed release.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -78,6 +79,69 @@ pub(crate) fn parse_components(pem: &str) -> Result<RsaComponents, String> {
         key.public_exponent.as_bytes().to_vec(),
         key.private_exponent.as_bytes().to_vec(),
     ))
+}
+
+/// An RSA private key held for signing by `ring`.
+///
+/// Signing used to raise the padded digest to the private exponent with
+/// `BigUint::modpow` (`Crypto.modexp`): no blinding, and an exponentiation
+/// whose time depends on the bits of `d`. A service that signs documents a
+/// third party submits — PAdES, SAML — hands that party a timing oracle on
+/// its key. `ring` signs with blinding and constant-time arithmetic.
+///
+/// `ring` accepts keys of 2048 to 8192 bits; a smaller key is refused here.
+pub struct RsaSigningKey(ring::signature::RsaKeyPair);
+
+impl RsaSigningKey {
+    /// A PEM private key: PKCS#8 (`BEGIN PRIVATE KEY`) or PKCS#1
+    /// (`BEGIN RSA PRIVATE KEY`).
+    pub(crate) fn from_pem(pem: &str) -> Result<Self, String> {
+        let (label, der) = pem_to_der(pem)?;
+        if label.contains("RSA PRIVATE KEY") {
+            Self::from_pkcs1_der(&der)
+        } else {
+            let pki =
+                PrivateKeyInfo::from_der(&der).map_err(|e| format!("PKCS#8 parse error: {}", e))?;
+            Self::from_pkcs1_der(pki.private_key)
+        }
+    }
+
+    /// A PKCS#1 `RSAPrivateKey` in DER.
+    pub(crate) fn from_pkcs1_der(der: &[u8]) -> Result<Self, String> {
+        ring::signature::RsaKeyPair::from_der(der)
+            .map(Self)
+            .map_err(|e| format!("RSA private key rejected: {} (2048 to 8192 bits)", e))
+    }
+
+    /// RSASSA-PKCS1-v1_5 over `message`, hashed with `algorithm` (`sha256` or
+    /// `sha512`, the hashes `RsaKey.verify` checks).
+    pub(crate) fn sign(&self, message: &[u8], algorithm: &str) -> Result<Vec<u8>, String> {
+        let padding: &'static dyn ring::signature::RsaEncoding = match algorithm {
+            "sha256" => &ring::signature::RSA_PKCS1_SHA256,
+            "sha512" => &ring::signature::RSA_PKCS1_SHA512,
+            other => {
+                return Err(format!(
+                    "unsupported signing algorithm {:?} (sha256 or sha512)",
+                    other
+                ))
+            }
+        };
+        let mut signature = vec![0u8; self.0.public().modulus_len()];
+        self.0
+            .sign(
+                padding,
+                &ring::rand::SystemRandom::new(),
+                message,
+                &mut signature,
+            )
+            .map_err(|_| "RSA signing failed".to_string())?;
+        Ok(signature)
+    }
+
+    /// RSASSA-PKCS1-v1_5 with SHA-256.
+    pub(crate) fn sign_sha256(&self, message: &[u8]) -> Result<Vec<u8>, String> {
+        self.sign(message, "sha256")
+    }
 }
 
 /// Parse a PEM RSA **public** key — SPKI (`-----BEGIN PUBLIC KEY-----`) or
@@ -337,6 +401,51 @@ pub fn register_rsa_key_builtins(env: &mut Environment) {
         })),
     );
 
+    // RsaKey.sign(private_pem, message, algorithm?) -> base64 String
+    // RSASSA-PKCS1-v1_5, the counterpart of RsaKey.verify. `message` is a
+    // string or a byte array; `algorithm` is "sha256" (default) or "sha512".
+    // Signs through `ring` (blinded, constant time), which
+    // `Crypto.modexp(em, d, n)` is not: use this to sign with a private key.
+    methods.insert(
+        "sign".to_string(),
+        Rc::new(NativeFunction::new("RsaKey.sign", None, |args| {
+            if args.len() < 2 || args.len() > 3 {
+                return Err(format!(
+                    "RsaKey.sign() expects 2-3 arguments (private_pem, message, algorithm?), got {}",
+                    args.len()
+                ));
+            }
+            let pem = match &args[0] {
+                Value::String(s) => s.clone(),
+                other => {
+                    return Err(format!(
+                        "RsaKey.sign() expects string PEM, got {}",
+                        other.type_name()
+                    ))
+                }
+            };
+            let message = arg_bytes(&args[1], "RsaKey.sign() message", false)?;
+            let algorithm = match args.get(2) {
+                None | Some(Value::Null) => "sha256".to_string(),
+                Some(Value::String(s)) => s.to_lowercase().to_string(),
+                Some(other) => {
+                    return Err(format!(
+                        "RsaKey.sign() expects string algorithm, got {}",
+                        other.type_name()
+                    ))
+                }
+            };
+            let signature = RsaSigningKey::from_pem(&pem)
+                .and_then(|key| key.sign(&message, &algorithm))
+                .map_err(|err| format!("RsaKey.sign(): {}", err))?;
+            Ok(Value::String(
+                base64::engine::general_purpose::STANDARD
+                    .encode(signature)
+                    .into(),
+            ))
+        })),
+    );
+
     let class = Class {
         name: "RsaKey".to_string(),
         superclass: None,
@@ -368,6 +477,51 @@ RhwGmTE/QZENd9lsuQIDAQAB
     const TEST_MESSAGE: &[u8] = b"amount=2500&reference=abc";
     const TEST_SIG_SHA1: &str = "DoxNElGwl2BVmyEqHYRymZzP/bgBE+fhzBOll7/uJxpM3RWdVFsc8FXC+fpnU9fu3/7ven5SXRGD1E9aquLFky9Dh7YYq3nKtFwajkafDBb3JbtBBlG8p8U4bRTdNaGtk+2aAjqCwj1f+ZDnRmQ5U/WbapkqHbLWXr3jNvO8jZk=";
     const TEST_SIG_SHA256: &str = "HLvC3i1aCsLBCV9ugJ7uhzJ2TCzJxAnEsPrwnZGlXGEvwFpXj8NJ45ce70Lp7L6cqNlYD5HS8BY6ZRALn0a1mKJCZUur9dg51bqriNFzr4+UxJV1pWb+qPXG3tW3BNU37lLUP0Zk5Z1jlQ8Uz/RE4p+Y3Ib+PS4m420VTpLABvA=";
+
+    const SIGNING_KEY_PEM: &str = include_str!("../../../tests/fixtures/pades/rsa_key.pem");
+    const SIGNING_PUBLIC_PEM: &str = include_str!("../../../tests/fixtures/pades/rsa_pub.pem");
+    const WEAK_KEY_PEM: &str = include_str!("../../../tests/fixtures/pades/rsa_1024_key.pem");
+
+    #[test]
+    fn a_ring_signature_verifies_with_the_public_key() {
+        let key = RsaSigningKey::from_pem(SIGNING_KEY_PEM).expect("2048-bit key");
+        for algorithm in ["sha256", "sha512"] {
+            let signature = key.sign(TEST_MESSAGE, algorithm).expect("sign");
+            assert_eq!(signature.len(), 256, "{algorithm}: one modulus long");
+            assert!(
+                verify_pkcs1_v15(SIGNING_PUBLIC_PEM, TEST_MESSAGE, &signature, algorithm)
+                    .expect("verify"),
+                "{algorithm}: the signature verifies"
+            );
+            assert!(
+                !verify_pkcs1_v15(SIGNING_PUBLIC_PEM, b"tampered", &signature, algorithm)
+                    .expect("verify"),
+                "{algorithm}: not over another message"
+            );
+        }
+        // PKCS#1 v1.5 is deterministic: the same bytes as the schoolbook
+        // computation produced, so nothing downstream sees a change.
+        let (n, _, d) = parse_components(SIGNING_KEY_PEM).unwrap();
+        let n: Vec<u8> = n.iter().skip_while(|b| **b == 0).copied().collect();
+        let t = digest_info("sha256", TEST_MESSAGE).unwrap();
+        let mut em = vec![0x00u8, 0x01];
+        em.extend(std::iter::repeat_n(0xffu8, n.len() - t.len() - 3));
+        em.push(0x00);
+        em.extend_from_slice(&t);
+        let schoolbook = crate::interpreter::builtins::crypto::do_modexp(&em, &d, &n).unwrap();
+        assert_eq!(key.sign_sha256(TEST_MESSAGE).unwrap(), schoolbook);
+    }
+
+    #[test]
+    fn a_key_under_2048_bits_or_an_unknown_hash_is_refused() {
+        let err = RsaSigningKey::from_pem(WEAK_KEY_PEM)
+            .err()
+            .expect("1024-bit key refused");
+        assert!(err.contains("2048"), "{err}");
+        let key = RsaSigningKey::from_pem(SIGNING_KEY_PEM).unwrap();
+        assert!(key.sign(TEST_MESSAGE, "sha1").is_err());
+        assert!(key.sign(TEST_MESSAGE, "sha384").is_err());
+    }
 
     fn sig(b64: &str) -> Vec<u8> {
         base64::engine::general_purpose::STANDARD

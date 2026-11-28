@@ -178,6 +178,25 @@ pub fn handle(request: EdgeRequest) -> EdgeResponse {
     if let Some(client) = live_client(&request) {
         return client;
     }
+    // The framework's handlers for the reserved `/__…` namespace have had
+    // their turn. Whatever is left must not reach the application, as under
+    // `soli serve` (`handle_hyper_request`): those paths are exempt from both
+    // CSRF layers, so a route like `patch("/:section/probe")` would take a
+    // cross-site PATCH to `/__soli/probe` with no CSRF check at all. See
+    // `csrf::is_reserved_framework_path`.
+    if csrf::is_reserved_framework_path(&request.path) {
+        return text(404, "Not Found");
+    }
+    // The cap `soli serve` applies while reading (`pipeline::parse_request`),
+    // checked before anything parses or copies the body. The Worker host
+    // stops reading at the same cap (`soli_max_body_size`); this is the
+    // backstop for a host that did not.
+    if request.method != "GET"
+        && request.method != "HEAD"
+        && request.body.len() > crate::interpreter::builtins::body_limit::get_max_body_size()
+    {
+        return text(413, "Request body too large");
+    }
     // An isolate serves one request after another: each starts and ends with
     // no tenant, so one site's database never answers another site's request.
     crate::db::tenancy::clear();

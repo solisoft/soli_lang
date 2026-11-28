@@ -89,6 +89,46 @@ async function dispatch(head, body) {
   return result;
 }
 
+// The app's request-body cap (`set_max_body_size`, `SOLI_MAX_BODY_SIZE`; 8 MiB
+// by default), as `soli serve` applies it. Read here so an oversized body is
+// refused before it is buffered, let alone copied into wasm memory.
+const DEFAULT_MAX_BODY_SIZE = 8 * 1024 * 1024;
+
+function maxBodySize() {
+  return typeof wasm.soli_max_body_size === "function"
+    ? wasm.soli_max_body_size() >>> 0
+    : DEFAULT_MAX_BODY_SIZE;
+}
+
+// The request body, or null when it is larger than `limit`: refused on its
+// declared Content-Length without reading a byte, or as soon as the bytes read
+// pass the limit (a chunked upload declares no length).
+async function readBody(request, limit) {
+  const declared = Number(request.headers.get("content-length"));
+  if (Number.isFinite(declared) && declared > limit) return null;
+  if (!request.body) return new Uint8Array(0);
+  const reader = request.body.getReader();
+  const chunks = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.length;
+    if (total > limit) {
+      await reader.cancel();
+      return null;
+    }
+    chunks.push(value);
+  }
+  const body = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return body;
+}
+
 // One queued job through wasm: the report says what to do with its message.
 async function dispatchJob(message) {
   const input = encoder.encode(
@@ -373,7 +413,13 @@ export default {
     }
     const body = ["GET", "HEAD"].includes(request.method)
       ? new Uint8Array(0)
-      : new Uint8Array(await request.arrayBuffer());
+      : await readBody(request, maxBodySize());
+    if (body === null) {
+      return new Response("Request body too large", {
+        status: 413,
+        headers: { "content-type": "text/plain; charset=utf-8" },
+      });
+    }
     // The request's SQL connections close before the next request enters wasm.
     const job = queue
       .then(() =>
