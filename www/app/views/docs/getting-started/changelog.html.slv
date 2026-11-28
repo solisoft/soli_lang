@@ -20,12 +20,16 @@
 
     <section id="unreleased" class="mb-16 scroll-mt-24">
         <h2 class="text-3xl font-bold text-white mb-4">Unreleased</h2>
-        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.43.3.</p>
-        <h3 id="unreleased-fixes" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Fixes</h3>
+        <p class="text-gray-400 text-sm leading-relaxed mb-8">Changes landing on <code class="text-cyan-400">main</code> since v2.43.4.</p>
+    </section>
+
+    <section id="v2-43-4" class="mb-16 scroll-mt-24">
+        <h2 class="text-3xl font-bold text-white mb-4">v2.43.4 <span class="text-gray-500 text-xl font-normal">&mdash; 2026-11-28</span></h2>
+        <h3 id="v2-43-4-fixes" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Fixes</h3>
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
             <li><strong class="text-white"><code class="text-cyan-400">soli fmt</code> keeps one-line blocks.</strong> It rewrote every block as a three-line <code class="text-cyan-400">do |x| &hellip; end</code>, so <code class="text-cyan-400">data.each {|x| x + 2 }</code> &mdash; and the <code class="text-cyan-400">xs.map { |x| x * 2 }</code> the style guide recommends &mdash; never survived a format. A one-line brace block with a single expression now stays one line, spaced as <code class="text-cyan-400">{ |x| x + 2 }</code>, while it fits in 120 columns (<a href="/docs/development-tools/formatting" class="text-amber-400 hover:underline">Formatting</a>).</li>
         </ul>
-        <h3 id="unreleased-security" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Auth &amp; security</h3>
+        <h3 id="v2-43-4-security" class="text-xl font-semibold text-white mb-4 scroll-mt-24">Auth &amp; security</h3>
         <ul class="space-y-3 text-gray-400 text-sm leading-relaxed mb-10">
             <li><strong class="text-white">Excel paths are jailed.</strong> <code class="text-cyan-400">Spreadsheet.excel</code>, <code class="text-cyan-400">excel_sheets</code> and <code class="text-cyan-400">excel_write</code> opened whatever path they were given: a request choosing it could read a workbook outside the app or truncate any file the server could write. They now go through the same jail and symlink guard as <code class="text-cyan-400">File.*</code> (<a href="/docs/builtins/spreadsheet#section-untrusted" class="text-amber-400 hover:underline">Spreadsheet</a>).</li>
             <li><strong class="text-white">Untrusted workbooks are bounded.</strong> The reader moves to calamine 0.38, which fixes a crash and an unbounded allocation on crafted files (RUSTSEC-2026-0436), and a workbook over <code class="text-cyan-400">SOLI_SPREADSHEET_MAX_BYTES</code> (50&nbsp;MiB) or inflating past <code class="text-cyan-400">SOLI_SPREADSHEET_MAX_INFLATED_BYTES</code> (512&nbsp;MiB) is refused before parsing; a malformed one raises instead of crashing the request.</li>

@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.43.4] - 2026-11-28
+
 ### Fixed
 - **`soli fmt` keeps one-line brace blocks.** `print_do_block` printed every trailing block as `do |x| … end` over three lines, so `data.each {|x| x + 2 }` — and the `xs.map { |x| x * 2 }` the style guide recommends — never survived a format. `try_print_brace_block` keeps a block the source wrote as `{ … }` on one line, with a single expression body, as ` { |x| expr }` while the line fits in `MAX_LINE_LENGTH`; anything else still becomes `do … end`.
 
