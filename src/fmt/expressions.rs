@@ -969,11 +969,16 @@ impl Printer<'_> {
         self.print_arg_list_inner(args);
     }
 
-    /// Emit ` do |params| … end` for a trailing block argument.
+    /// Emit ` do |params| … end` for a trailing block argument — or keep
+    /// ` { |params| expr }` when the source wrote it that way (see
+    /// [`Self::try_print_brace_block`]).
     fn print_do_block(&mut self, block: &Expr) {
         let ExprKind::Lambda { params, body, .. } = &block.kind else {
             return;
         };
+        if self.try_print_brace_block(block, params, body) {
+            return;
+        }
         self.write(" do");
         if !params.is_empty() {
             self.write(" |");
@@ -991,6 +996,54 @@ impl Printer<'_> {
         self.newline();
         self.print_block_body(body);
         self.write("end");
+    }
+
+    /// A block the source wrote as `{ |x| … }` on one line, whose body is a
+    /// single expression, keeps that spelling while it still fits on the line:
+    /// `xs.map { |x| x * 2 }`, the form the language docs use for a one-liner.
+    /// Every block used to become a three-line `do … end`.
+    ///
+    /// Only a block written on one line qualifies, so no comment can sit
+    /// inside it; a body that prints on several lines (a nested `do` block,
+    /// a long hash) falls back to `do … end`, as does a line over the limit.
+    fn try_print_brace_block(
+        &mut self,
+        block: &Expr,
+        params: &[crate::ast::Parameter],
+        body: &[crate::ast::Stmt],
+    ) -> bool {
+        let [stmt] = body else {
+            return false;
+        };
+        let crate::ast::StmtKind::Expression(expr) = &stmt.kind else {
+            return false;
+        };
+        let written = self
+            .source
+            .get(block.span.start_usize()..block.span.end_usize())
+            .unwrap_or("");
+        if !written.starts_with('{') || written.contains('\n') {
+            return false;
+        }
+        self.try_single_line_within(MAX_LINE_LENGTH, |p| {
+            p.write(" {");
+            if !params.is_empty() {
+                p.write(" |");
+                for (i, param) in params.iter().enumerate() {
+                    if i > 0 {
+                        p.write(", ");
+                    }
+                    if param.is_block_param {
+                        p.write("&");
+                    }
+                    p.write(&param.name);
+                }
+                p.write("|");
+            }
+            p.write(" ");
+            p.print_expr(expr);
+            p.write(" }");
+        })
     }
 
     fn print_arg_list_inner(&mut self, args: &[Argument]) {

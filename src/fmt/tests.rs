@@ -967,6 +967,42 @@ fn method_call_block_needs_no_empty_parens() {
 }
 
 #[test]
+fn one_line_brace_block_stays_on_one_line() {
+    // `soli fmt` turned every brace block into a three-line `do … end`.
+    assert_fmt("data.each {|x| x + 2 }\n", "data.each { |x| x + 2 }\n");
+    assert_fmt(
+        "ys = data.map { |x| x * 2 }\n",
+        "ys = data.map { |x| x * 2 }\n",
+    );
+    assert_fmt(
+        "total = pairs.map { |k, v| v }.sum\n",
+        "total = pairs.map { |k, v| v }.sum\n",
+    );
+    // After a call with parentheses, and with a block parameter.
+    assert_round_trip("found = find_all(items, 2) { |x| x > 2 }\n");
+    assert_idempotent("found = find_all(items, 2) { |x| x > 2 }\n");
+    assert_idempotent("data.each {|x| x + 2 }\n");
+    assert_round_trip("ys = data.select { |x| x > 2 }.map { |x| x * 2 }\n");
+}
+
+#[test]
+fn a_do_block_or_a_brace_block_over_lines_stays_do_end() {
+    // What the author wrote as `do … end` keeps that form, even when short.
+    let src = "data.each do |x|\n  print(x)\nend\n";
+    assert_fmt(src, src);
+    // A brace block written over several lines, or with two statements,
+    // becomes `do … end`.
+    assert_fmt(
+        "data.each { |x|\n  print(x)\n}\n",
+        "data.each do |x|\n  print(x)\nend\n",
+    );
+    // A one-line brace block that would overflow the line limit too.
+    let long = format!("data.each {{ |x| print(\"{}\") }}\n", "y".repeat(120));
+    let out = format_source(&long).expect("format failed");
+    assert!(out.starts_with("data.each do |x|\n"), "got:\n{}", out);
+}
+
+#[test]
 fn form_builder_block_round_trips() {
     let src = "def show(post)\n  form_with(post) do |f|\n    f.submit(\"Save\")\n  end\nend\n";
     let out = format_source(src).expect("format failed");
@@ -1267,9 +1303,13 @@ fn invariants_survive_formatting() {
 
 #[test]
 fn after_commit_keeps_its_bare_block_form() {
+    // No parentheses added, whichever spelling the author used.
     let src = "after_commit do\n  print(1)\nend\n";
-    assert_fmt("after_commit { print(1) }\n", src);
+    assert_fmt(src, src);
     assert_idempotent(src);
+    let braces = "after_commit { print(1) }\n";
+    assert_fmt(braces, braces);
+    assert_idempotent(braces);
 }
 
 #[test]
