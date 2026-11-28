@@ -317,6 +317,9 @@ pub struct MigrationRunner {
     /// No per-migration lines: `soli test` migrates a fresh test database
     /// and reports one summary line instead.
     quiet: bool,
+    /// The interpreter every migration of this run executes in, built on the
+    /// first one (see [`crate::MigrationSession`]).
+    session: std::cell::RefCell<Option<crate::MigrationSession>>,
 }
 
 impl MigrationRunner {
@@ -327,6 +330,7 @@ impl MigrationRunner {
             migrations_path: app_path.join("db/migrations"),
             connection_filter: None,
             quiet: false,
+            session: std::cell::RefCell::new(None),
         }
     }
 
@@ -802,22 +806,33 @@ let db = MigrationDb();
         // `db:seed`). JWT is acquired lazily on first authenticated call.
         crate::interpreter::builtins::model::init_db_config();
 
-        // Auto-load `app/models` and `app/services` so migrations can call
-        // `User.create(...)`, run data backfills through the Model API, etc.
-        // without explicit imports — mirrors seeds and the test runner.
-        let preamble = collect_model_preamble_files(&self.app_path);
+        self.run_in_session(&full_source, Some(&migration.path))
+            .map_err(|e| format!("Migration {} failed: {}", direction, e))
+    }
 
-        let (_assertions, result) = crate::run_with_path_and_coverage(
-            &full_source,
-            Some(&migration.path),
-            false,
-            None,
-            Some(&migration.path),
-            &preamble,
-        );
-        result.map_err(|e| format!("Migration {} failed: {}", direction, e))?;
-
-        Ok(())
+    /// Run a migration's full source in this runner's [`MigrationSession`],
+    /// loading `app/models` and `app/services` into it on first use — once
+    /// per run, not once per migration — so migrations can call
+    /// `User.create(...)`, run data backfills through the Model API, etc.
+    /// without explicit imports, as seeds and the test runner do.
+    ///
+    /// A failed migration drops the session: whatever it left behind (a
+    /// half-unwound call stack, a model class it reopened) does not reach
+    /// the next run's migrations.
+    fn run_in_session(&self, source: &str, path: Option<&Path>) -> Result<(), String> {
+        let mut slot = self.session.borrow_mut();
+        if slot.is_none() {
+            let preamble = collect_model_preamble_files(&self.app_path);
+            *slot = Some(crate::MigrationSession::new(&preamble).map_err(|e| e.to_string())?);
+        }
+        let Some(session) = slot.as_mut() else {
+            return Err("migration session unavailable".to_string());
+        };
+        let result = session.run(source, path).map_err(|e| e.to_string());
+        if result.is_err() {
+            *slot = None;
+        }
+        result
     }
 
     /// SQL migration runner (Postgres / MySQL / SQLite): create_table / drop_table.
@@ -950,13 +965,11 @@ let db = MigrationDb();
 "#
         );
 
-        // Auto-load `app/models` and `app/services`, same as the SoliDB path, so
-        // a data migration can use the Model API without an explicit `import`.
-        let preamble = collect_model_preamble_files(&self.app_path);
-
-        crate::run_migration_source(&full_source, &preamble)
-            .map_err(|e| format!("Migration {direction} failed: {e}"))?;
-        Ok(())
+        // `app/models` and `app/services` are loaded once per run, same as the
+        // SoliDB path, so a data migration can use the Model API without an
+        // explicit `import`.
+        self.run_in_session(&full_source, None)
+            .map_err(|e| format!("Migration {direction} failed: {e}"))
     }
 
     /// Run all pending migrations
@@ -1664,10 +1677,79 @@ end
     }
 
     #[test]
+    fn migrations_share_the_preamble_but_not_each_others_scope() {
+        // One `MigrationSession` per run: every migration sees the models it
+        // loaded once, and none sees what an earlier migration declared.
+        with_sqlite_app(&["session"], |app| {
+            let models = app.join("app/models");
+            fs::create_dir_all(&models).expect("app/models");
+            fs::write(models.join("note.sl"), "class Note < Model\nend\n").expect("model");
+
+            write_migration(
+                app,
+                "20260813000005_first.sl",
+                r#"
+def helper_from_first
+  "first"
+end
+
+def up(db)
+  db.create_table("notes", { "id": "pk", "body": "text" })
+  assert(Note != null)
+end
+
+def down(db)
+end
+"#,
+            );
+            write_migration(
+                app,
+                "20260813000006_second.sl",
+                r#"
+def up(db)
+  assert(Note != null)
+  db.create_table("tags", { "id": "pk" })
+end
+
+def down(db)
+end
+"#,
+            );
+            let up = runner(app).migrate_up().expect("both migrations see Note");
+            assert_eq!(up.applied.len(), 2, "{:?}", up.applied);
+
+            write_migration(
+                app,
+                "20260813000007_third.sl",
+                r#"
+def up(db)
+  helper_from_first()
+end
+
+def down(db)
+end
+"#,
+            );
+            // Declare the helper in this runner's session first, the way the
+            // first migration did: the third one, in the same session, must
+            // still not see it.
+            let runner = runner(app);
+            runner
+                .run_in_session("def helper_from_first\n  \"first\"\nend\n", None)
+                .expect("declare in a scope of its own");
+            let err = match runner.migrate_up() {
+                Ok(ok) => panic!("the third migration must fail, applied {:?}", ok.applied),
+                Err(err) => err,
+            };
+            assert!(err.contains("helper_from_first"), "{err}");
+        });
+    }
+
+    #[test]
     fn a_sql_migration_sees_auto_loaded_models() {
-        // The SQL path runs through `run_migration_source`, a different runner
-        // than the SoliDB path — it needs the model preamble of its own or a
-        // data migration on Postgres/MySQL/SQLite raises "Undefined variable".
+        // The SQL path runs through the same `MigrationSession` as the SoliDB
+        // path — it needs the model preamble or a data migration on
+        // Postgres/MySQL/SQLite raises "Undefined variable".
         with_sqlite_app(&["models"], |app| {
             let models = app.join("app/models");
             fs::create_dir_all(&models).expect("app/models");

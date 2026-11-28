@@ -261,13 +261,15 @@ that does the inverse.
 `soli test` gives the suite the schema these migrations build — nothing to
 call from a spec:
 
-- When it creates the base test database (`<base>_test`), it runs every
-  migration here against it, then empties the rows they seeded. A failing
-  migration is reported and the run continues.
+- It applies the pending migrations here to the base test database
+  (`<base>_test`) — all of them the first time, only new ones after — then
+  empties the rows they seeded. A failing migration is reported and the run
+  continues.
 - Each extra worker database (`<base>_w<i>_test`) gets the base database's
   collections (blob types included) and its indexes.
-- The databases are dropped when the suite ends. `SOLI_TEST_KEEP_DB=1` keeps
-  them and truncates instead; `SOLI_TEST_FRESH_DB=1` (with it) rebuilds them.
+- The databases are kept and truncated when the suite ends (`_migrations`
+  keeps its rows). `SOLI_TEST_DROP_DB=1` drops them instead;
+  `SOLI_TEST_FRESH_DB=1` rebuilds them at the start of a run.
 
 The indexes are the production ones, unique ones included: two fixtures with
 the same value in a uniquely indexed field fail on the second `create` (its

@@ -159,28 +159,75 @@ fn inject_job_facade(interpreter: &mut interpreter::Interpreter, path: &std::pat
     interpreter::builtins::jobs::register_job_class_in_registry(&class_name, class_value);
 }
 
-/// Run a migration file. Same pipeline as [`run_with_options`], but the
-/// interpreter also has the SQL schema helpers (`db.execute`, `add_column`, …).
+/// One interpreter for a whole `db:migrate` run, with `app/models` and
+/// `app/services` loaded once.
 ///
-/// `preamble_files` are `app/models` / `app/services` (see
-/// [`crate::migration::collect_model_preamble_files`]) so a data migration can
-/// use the Model API without an `import`, exactly as on the SoliDB path.
-pub(crate) fn run_migration_source(
-    source: &str,
-    preamble_files: &[(std::path::PathBuf, String)],
-) -> Result<(), SolilangError> {
-    let tokens = lexer::Scanner::new(source).scan_tokens()?;
-    let program = parser::Parser::new(tokens).parse()?;
-    let mut interpreter = interpreter::Interpreter::new_for_migrations();
-    interpreter::builtins::mailer::ensure_prelude(&mut interpreter);
-    crate::interpreter::events::ensure_prelude(&mut interpreter);
-    interpreter::builtins::policy::ensure_prelude(&mut interpreter);
-    // Models load before the migration body, and without type-checking: a model
-    // class is application code the migration merely borrows, and `soli check`
-    // is where it gets checked.
-    run_preamble_files(&mut interpreter, preamble_files, false)?;
-    interpreter.interpret(&program)?;
-    Ok(())
+/// Each migration used to get an interpreter of its own and re-run the whole
+/// preamble before its body: on an app with ~50k lines of models and services
+/// that was ~60ms per migration on a fast box and ~250ms on a slower one,
+/// against ~2ms for the migration itself — 124 migrations took 7.9s, all of it
+/// preamble. The preamble is application code the migrations only borrow, so
+/// it is the same for every one of them.
+///
+/// Each migration still runs in a scope of its own, enclosing the preamble's:
+/// its `up` / `down`, the `MigrationDb` helper class and any top-level helper
+/// it declares are gone when it ends, so a migration cannot reach a function
+/// an earlier one defined.
+///
+/// The interpreter also has the SQL schema helpers (`db.execute`,
+/// `add_column`, …). Models load without type-checking: a model class is
+/// application code the migration merely borrows, and `soli check` is where
+/// it gets checked.
+pub(crate) struct MigrationSession {
+    interpreter: interpreter::Interpreter,
+}
+
+impl MigrationSession {
+    /// `preamble_files` are `app/models` / `app/services` (see
+    /// [`crate::migration::collect_model_preamble_files`]).
+    pub(crate) fn new(
+        preamble_files: &[(std::path::PathBuf, String)],
+    ) -> Result<Self, SolilangError> {
+        let mut interpreter = interpreter::Interpreter::new_for_migrations();
+        interpreter::builtins::mailer::ensure_prelude(&mut interpreter);
+        crate::interpreter::events::ensure_prelude(&mut interpreter);
+        interpreter::builtins::policy::ensure_prelude(&mut interpreter);
+        // `app/subscribers/` is not part of this preamble, but a model may
+        // subscribe at load time: start from an empty per-thread registry.
+        crate::interpreter::events::clear_subscribers();
+        run_preamble_files(&mut interpreter, preamble_files, false)?;
+        Ok(Self { interpreter })
+    }
+
+    /// Run one migration's source in a fresh scope over the preamble. With a
+    /// `source_path`, its `import`s resolve against the migration's directory.
+    pub(crate) fn run(
+        &mut self,
+        source: &str,
+        source_path: Option<&std::path::Path>,
+    ) -> Result<(), SolilangError> {
+        let tokens = lexer::Scanner::new(source).scan_tokens()?;
+        let mut program = parser::Parser::new(tokens).parse()?;
+        if let Some(path) = source_path.filter(|_| has_imports(&program)) {
+            let mut resolver = module::ModuleResolver::new(import_base_dir(path));
+            program = resolver
+                .resolve(program, path)
+                .map_err(module_resolution_error)?;
+        }
+        if let Some(path) = source_path {
+            self.interpreter.set_source_path(path.to_path_buf());
+        }
+
+        let root = self.interpreter.environment.clone();
+        let scope = interpreter::environment::Environment::with_enclosing(root.clone());
+        self.interpreter.environment = std::rc::Rc::new(std::cell::RefCell::new(scope));
+        let result = self.interpreter.interpret(&program);
+        // Back on the preamble's scope whatever happened: a failed migration
+        // must not leave its bindings visible to the next one.
+        self.interpreter.environment = root;
+        result?;
+        Ok(())
+    }
 }
 
 /// Run a Solilang program from a file path with module resolution.

@@ -1754,18 +1754,18 @@ pub fn run_test(
         clear_global_coverage_tracker();
     }
 
-    // Drop the worker DBs now that the suite is done, so a machine running
-    // many projects doesn't accumulate one empty `*_spec` database per worker
-    // per app forever. `SOLI_TEST_KEEP_DB=1` keeps them and truncates instead:
-    // the drops are serialised server-side and the next run has to recreate
-    // the schema, which costs little on a small app (both teardowns measured
-    // ~2s for a 2-collection DB) but grows with the collection count, since
-    // SoliDB drops column families one at a time (~175ms each). Use it when
-    // the tight test loop matters more than the leftovers.
-    if std::env::var("SOLI_TEST_KEEP_DB").as_deref() == Ok("1") {
-        truncate_test_databases(&worker_databases);
-    } else {
+    // Keep the worker DBs and truncate them. Dropping them made every run
+    // rebuild the schema from nothing: SoliDB creates and drops column
+    // families one at a time (~175ms each), so an app with a few dozen
+    // collections paid ~16s of migrations per run for a 0.7s spec. A kept
+    // base DB keeps its `_migrations` rows, and the next run applies only
+    // the pending migrations. Stranded databases of wider `--jobs` runs are
+    // still swept at start-up. `SOLI_TEST_DROP_DB=1` drops them instead, for
+    // a machine where the leftover empty databases matter more than the loop.
+    if std::env::var("SOLI_TEST_DROP_DB").as_deref() == Ok("1") {
         drop_test_databases(&worker_databases);
+    } else {
+        truncate_test_databases(&worker_databases);
     }
 
     println!();
@@ -1829,26 +1829,33 @@ fn apply_test_solidb_host_override() {
     }
 }
 
-/// Give a base test database that was just created the app's schema.
+/// The collection the migration runner records applied versions in. A reset
+/// never truncates it: those rows are what lets a kept base database apply
+/// only its pending migrations instead of replaying all of them.
+const MIGRATIONS_COLLECTION: &str = "_migrations";
+
+/// Bring the base test database up to the app's schema by applying its
+/// pending migrations.
 ///
 /// The base DB's collections are the template every sibling worker DB is
-/// created from, and the suite drops its databases on exit — so on any run
-/// without `SOLI_TEST_KEEP_DB` the template was empty, and a collection
-/// existed only once a spec had written to it. A query that reads a
-/// collection nothing had written yet (an activity feed over ten
-/// collections) answered *CollectionNotFound*: the suite passed only where
-/// a kept database remembered earlier runs (rbuild), and failed on a fresh
-/// SoliDB. Running `db/migrations` here builds the schema production has.
+/// created from. Without migrations a collection existed only once a spec
+/// had written to it, and a query that read a collection nothing had written
+/// yet (an activity feed over ten collections) answered *CollectionNotFound*.
+/// Running `db/migrations` here builds the schema production has.
+///
+/// The database is kept between runs and its `_migrations` rows survive the
+/// reset, so a fresh database replays every migration once and later runs
+/// apply only the new ones — usually none, for the cost of one query.
 ///
 /// Rows a migration seeds are truncated afterwards — the baseline is "every
-/// collection, no rows". A failed migration is reported and the run goes on:
-/// the lazy path still creates collections on first write, as before.
-fn migrate_fresh_base_database(
+/// collection, no rows". `Ok(None)`: nothing was applied (no migrations, or
+/// none pending). `Ok(Some(message))`: migrations ran and the summary to print.
+fn migrate_base_database(
     app_dir: &Path,
     host: &str,
     auth_header: &Option<String>,
     database: &str,
-) {
+) -> Result<Option<String>, String> {
     let migrations_dir = app_dir.join("db/migrations");
     let has_migrations = std::fs::read_dir(&migrations_dir)
         .map(|entries| {
@@ -1858,7 +1865,7 @@ fn migrate_fresh_base_database(
         })
         .unwrap_or(false);
     if !has_migrations {
-        return;
+        return Ok(None);
     }
 
     let mut config = solilang::migration::DbConfig::new(host, database);
@@ -1870,32 +1877,71 @@ fn migrate_fresh_base_database(
     }
     let started = web_time::Instant::now();
     let runner = solilang::migration::MigrationRunner::new(config, app_dir).quiet(true);
-    match runner.migrate_up() {
-        Ok(result) => {
-            let collections = list_collections(host, auth_header, database)
-                .ok()
-                .flatten()
-                .unwrap_or_default();
-            let rows: Vec<(String, String)> = collections
-                .into_iter()
-                .filter(|(name, _)| name != "_migrations")
-                .collect();
-            let errors = truncate_collections(host, auth_header, database, &rows);
-            println!(
-                "  ✓ {} migrated: {} ({}ms, {} collection(s))",
-                database,
-                result.message,
-                started.elapsed().as_millis(),
-                rows.len()
-            );
-            if let Some(first) = errors.first() {
-                eprintln!("  ⚠ {} — {} (seeded rows may remain)", database, first);
-            }
-        }
+    let result = runner.migrate_up()?;
+    if result.applied.is_empty() {
+        return Ok(None);
+    }
+
+    let collections = list_collections(host, auth_header, database)
+        .ok()
+        .flatten()
+        .unwrap_or_default();
+    let rows: Vec<(String, String)> = collections
+        .into_iter()
+        .filter(|(name, _)| name != MIGRATIONS_COLLECTION)
+        .collect();
+    let errors = truncate_collections(host, auth_header, database, &rows);
+    if let Some(first) = errors.first() {
+        eprintln!("  ⚠ {} — {} (seeded rows may remain)", database, first);
+    }
+    Ok(Some(format!(
+        "{} ({}ms, {} collection(s))",
+        result.message,
+        started.elapsed().as_millis(),
+        rows.len()
+    )))
+}
+
+/// Apply the base database's pending migrations, rebuilding it once when
+/// they fail on a database kept from an earlier run.
+///
+/// A kept database can disagree with its migrations: one an older runner
+/// left without its `_migrations` rows replays every migration against the
+/// collections already there, and an edited migration may no longer apply
+/// over what its first version built. Dropping it and migrating from nothing
+/// is what every run used to do, so the fallback costs a single slow run.
+/// A failure on a database that was just created is reported and the run
+/// goes on: the lazy path still creates collections on first write.
+fn migrate_test_base_database(
+    app_dir: &Path,
+    host: &str,
+    auth_header: &Option<String>,
+    database: &str,
+    freshly_created: bool,
+) {
+    let report = |outcome: Result<Option<String>, String>| match outcome {
+        Ok(Some(summary)) => println!("  ✓ {} migrated: {}", database, summary),
+        Ok(None) => {}
         Err(err) => eprintln!(
             "  ⚠ {} — migrations failed, collections will be created on first write: {}",
             database, err
         ),
+    };
+
+    match migrate_base_database(app_dir, host, auth_header, database) {
+        Err(err) if !freshly_created => {
+            println!(
+                "  ⚠ {} — migrations failed on the kept database, rebuilding it: {}",
+                database, err
+            );
+            let rebuilt = drop_database(host, auth_header, database)
+                .and_then(|()| prepare_test_database(host, auth_header, database, &[]));
+            match rebuilt {
+                Ok(_) => report(migrate_base_database(app_dir, host, auth_header, database)),
+                Err(err) => eprintln!("  ✗ {} — rebuild failed: {}", database, err),
+            }
+        }
+        outcome => report(outcome),
     }
 }
 
@@ -1944,9 +1990,9 @@ fn ensure_test_databases(db_names: &[String], app_dir: &Path) {
     let base_started = web_time::Instant::now();
     let base_outcome = prepare_test_database(&host, &auth_header, base_database, &[]);
     print_reset_outcome(base_database, base_started.elapsed(), &base_outcome);
-    if matches!(&base_outcome, Ok((detail, _)) if detail == "created" || detail.starts_with("recreated"))
-    {
-        migrate_fresh_base_database(app_dir, &host, &auth_header, base_database);
+    if let Ok((detail, _)) = &base_outcome {
+        let freshly_created = detail == "created" || detail.starts_with("recreated");
+        migrate_test_base_database(app_dir, &host, &auth_header, base_database, freshly_created);
     }
 
     let template_collections: Vec<(String, String)> =
@@ -2052,8 +2098,8 @@ fn ensure_test_databases(db_names: &[String], app_dir: &Path) {
 /// indexes. Without this, a collection numbered by SoliDB in the base DB was a
 /// plain collection on the other workers: an insert took no number there, and
 /// a spec reading the number failed or passed depending on which worker ran
-/// it. A counter a worker already has (409) is left as it is, so a DB kept by
-/// `SOLI_TEST_KEEP_DB` converges the same way a new one does. A server older
+/// it. A counter a worker already has (409) is left as it is, so a DB kept from
+/// an earlier run converges the same way a new one does. A server older
 /// than SoliDB 2.12 has no counters route: the listing fails and nothing is
 /// copied.
 fn copy_template_counters(
@@ -2193,8 +2239,8 @@ fn create_counter(
 /// indexes its migrations create — unique ones included — existed only in the
 /// base DB: a spec inserting a duplicate value failed on worker 0 and passed
 /// on the others, and which one ran it changed with the file count. An index
-/// a worker already has, by name, is left as it is, so a DB kept by
-/// `SOLI_TEST_KEEP_DB` converges the same way a new one does.
+/// a worker already has, by name, is left as it is, so a DB kept from
+/// an earlier run converges the same way a new one does.
 fn copy_template_indexes(
     host: &str,
     auth_header: &Option<String>,
@@ -2371,10 +2417,12 @@ fn print_reset_outcome(database: &str, elapsed: std::time::Duration, outcome: &P
 /// to force the old drop+recreate when a schema-level reset is wanted
 /// (e.g. after reworking migrations or indexes).
 ///
-/// Since the suite now drops its worker DBs on the way out
-/// ([`drop_test_databases`]), the "already exists" branch below is reached
-/// only under `SOLI_TEST_KEEP_DB=1` — and `SOLI_TEST_FRESH_DB=1` is only
-/// meaningful in that same combination.
+/// `_migrations` keeps its rows: they tell the next `migrate_up` which
+/// versions this database already has.
+///
+/// The suite keeps its worker DBs on the way out ([`truncate_test_databases`]),
+/// so the "already exists" branch below is the usual one; it creates only
+/// on the first run, or after `SOLI_TEST_DROP_DB=1`.
 fn prepare_test_database(
     host: &str,
     auth_header: &Option<String>,
@@ -2433,6 +2481,7 @@ fn prepare_test_database(
 
     let keep_collections: Vec<(String, String)> = keep
         .iter()
+        .filter(|(name, _)| name != MIGRATIONS_COLLECTION)
         .map(|collection| (*collection).clone())
         .collect();
     let truncate_errors = truncate_collections(host, auth_header, database, &keep_collections);
@@ -2442,7 +2491,7 @@ fn prepare_test_database(
             "{} ({} of {} truncates failed)",
             first_error,
             truncate_errors.len(),
-            keep.len()
+            keep_collections.len()
         ));
     }
 
@@ -2456,10 +2505,10 @@ fn prepare_test_database(
         .cloned()
         .collect();
 
-    let mut detail = if keep.is_empty() {
+    let mut detail = if keep_collections.is_empty() {
         "already empty".to_string()
     } else {
-        format!("truncated {} collection(s)", keep.len())
+        format!("truncated {} collection(s)", keep_collections.len())
     };
     if !mismatched.is_empty() {
         detail.push_str(&format!(", dropped {} mistyped", mismatched.len()));
@@ -2508,11 +2557,12 @@ fn truncate_collections(
     })
 }
 
-/// Drop each worker DB once the suite finishes, so a machine running many
-/// projects doesn't accumulate one empty `*_spec` database per worker per app.
-/// The drops are issued in parallel; the server still serialises them, so the
-/// tail grows with the number of worker DBs and with each one's collection
-/// count. `SOLI_TEST_KEEP_DB=1` selects [`truncate_test_databases`] instead.
+/// Drop each worker DB once the suite finishes (`SOLI_TEST_DROP_DB=1`), so a
+/// machine running many projects doesn't accumulate one empty `*_spec`
+/// database per worker per app. The drops are issued in parallel; the server
+/// still serialises them, so the tail grows with the number of worker DBs and
+/// with each one's collection count — and the next run replays every
+/// migration. The default is [`truncate_test_databases`].
 fn drop_test_databases(db_names: &[String]) {
     // `worker_database_names` only ever produces `_test` / `_spec` names, but
     // this is an irreversible delete against whatever `SOLIDB_HOST` points at
@@ -2692,6 +2742,10 @@ fn truncate_test_databases(db_names: &[String]) {
                     // truncate — surface only real list errors.
                     match list_collections(host, auth_header, database) {
                         Ok(Some(collections)) => {
+                            let collections: Vec<(String, String)> = collections
+                                .into_iter()
+                                .filter(|(name, _)| name != MIGRATIONS_COLLECTION)
+                                .collect();
                             truncate_collections(host, auth_header, database, &collections)
                         }
                         Ok(None) => Vec::new(),

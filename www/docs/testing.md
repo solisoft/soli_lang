@@ -318,17 +318,21 @@ function in every spec. Test it through HTTP.
 
 ### Transaction Rollback
 
-The test runner **drops** its worker databases when a suite finishes, so a machine
-running many projects doesn't accumulate one empty `*_spec` database per worker per
-app. Set `SOLI_TEST_KEEP_DB=1` to keep them and truncate their collections instead.
-Dropping is serialised server-side and the next run has to recreate the schema, which
-costs little on a small app but grows with the collection count — use `SOLI_TEST_KEEP_DB=1`
-when the tight test loop matters more than the leftovers.
+The test runner **keeps** its worker databases between runs and empties them: every
+collection is truncated, except `_migrations`. Set `SOLI_TEST_DROP_DB=1` to drop them when
+the suite finishes instead — the next run then rebuilds the schema from nothing, which grows
+with the collection count. Databases left behind by a run with a wider `--jobs` are swept
+at the start of the next run either way. `SOLI_TEST_FRESH_DB=1` drops and recreates them at
+the start of a run.
 
-The base test database is created with the app's schema: when `soli test` creates (or
-recreates) it, it runs `db/migrations` against it and truncates any rows they seed, so
-every collection exists before the first spec runs. A failed migration is reported and the
-run continues; collections are then created on first write, as before. Because the migrations
+The base test database has the app's schema: before the first spec, `soli test` applies
+the **pending** migrations of `db/migrations` to it and truncates any rows they seed, so
+every collection exists before the first spec runs. The first run (or the first after a drop)
+applies all of them; later runs apply only the new ones, usually none. When migrations
+fail on a kept database — one whose `_migrations` rows an older runner emptied, or a
+migration edited after it ran — the runner drops it and migrates it from nothing once. A
+failed migration on a fresh database is reported and the run continues; collections are then
+created on first write, as before. Because the migrations
 also create the app's indexes, a spec that inserts a duplicate value into a uniquely indexed
 field fails as it would in production — give such fixtures distinct values. Every other worker
 database gets the base database's collections and indexes, so a spec sees the same schema
