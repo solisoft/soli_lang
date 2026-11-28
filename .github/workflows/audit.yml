@@ -1,0 +1,104 @@
+name: Audit
+
+# `cargo audit` against the RustSec advisory database, every day.
+#
+# CI's `audit` job runs on each push, which leaves two gaps this closes:
+#
+# - An advisory published on a day nothing is pushed goes unseen until the
+#   next push — and on a quiet week, that is the week the release ships with
+#   it. The database is fetched fresh on every run, so a daily run is what
+#   turns "published" into "noticed".
+# - CI audits the root Cargo.lock only. The Worker deployed to Cloudflare is
+#   built from edge/Cargo.lock, and the pdf, yaml and fuzz crates each
+#   resolve their own lockfile; they drifted behind the root one (an
+#   ammonia mutation-XSS and seven quinn-proto advisories sat in edge/ while
+#   the root audit was green).
+#
+# Waivers live in .cargo/audit.toml, which cargo-audit reads from the working
+# directory: every lockfile is audited from the repository root so they all
+# share them, exactly as `cargo audit` does locally.
+#
+# A scheduled run that fails opens an issue (or comments on the open one), so
+# the finding does not live only in an email.
+
+on:
+  schedule:
+    - cron: "17 5 * * *"
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "**/Cargo.lock"
+      - ".cargo/audit.toml"
+      - ".github/workflows/audit.yml"
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+
+      # Every lockfile, each to its own report; the job fails at the end if
+      # any of them did, so one red lockfile does not hide the others.
+      - name: Audit every lockfile
+        id: audit
+        run: |
+          status=0
+          : > report.md
+          for lock in $(git ls-files '*Cargo.lock' | sort); do
+            echo "::group::$lock"
+            if cargo audit --deny warnings --file "$lock" > out.txt 2>&1; then
+              echo "ok: $lock"
+            else
+              status=1
+              echo "::error title=cargo audit::$lock has advisories"
+              {
+                echo "### \`$lock\`"
+                echo
+                echo '```'
+                grep -E '^(Crate|Version|Title|Date|ID|URL|Solution|Warning):|^Dependency tree' out.txt || tail -40 out.txt
+                echo '```'
+                echo
+              } >> report.md
+            fi
+            cat out.txt
+            echo "::endgroup::"
+          done
+          cat report.md >> "$GITHUB_STEP_SUMMARY"
+          exit $status
+
+      - name: Open or update the audit issue
+        if: failure() && github.event_name == 'schedule' && steps.audit.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          title="cargo audit: advisories in the dependency tree"
+          {
+            echo "The daily audit failed on $(date -u +%Y-%m-%d) ([run]($RUN_URL))."
+            echo
+            cat report.md
+            echo "Fix by bumping the dependency (\`cargo update -p <crate>\`, from outside the"
+            echo "repository so the local eui patch stays out of the lockfile). Waive in"
+            echo "\`.cargo/audit.toml\` only under the conditions written at its top."
+          } > body.md
+          number=$(gh issue list --state open --search "\"$title\" in:title" --json number --jq '.[0].number')
+          if [ -n "$number" ]; then
+            gh issue comment "$number" --body-file body.md
+          else
+            gh issue create --title "$title" --body-file body.md
+          fi
