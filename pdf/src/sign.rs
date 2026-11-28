@@ -1134,10 +1134,17 @@ mod byte_range_tests {
 
     #[test]
     fn a_byte_range_must_be_non_negative_ordered_and_in_bounds() {
-        assert_eq!(checked_byte_range(&[0, 10, 20, 5], 25), Some([0, 10, 20, 5]));
+        assert_eq!(
+            checked_byte_range(&[0, 10, 20, 5], 25),
+            Some([0, 10, 20, 5])
+        );
         assert_eq!(checked_byte_range(&[-1, 10, 20, 5], 25), None, "negative");
         assert_eq!(checked_byte_range(&[0, 10, 20, -5], 25), None, "negative");
-        assert_eq!(checked_byte_range(&[0, i64::MAX, 20, 5], 25), None, "overflow");
+        assert_eq!(
+            checked_byte_range(&[0, i64::MAX, 20, 5], 25),
+            None,
+            "overflow"
+        );
         assert_eq!(checked_byte_range(&[0, 10, i64::MAX, i64::MAX], 25), None);
         assert_eq!(checked_byte_range(&[0, 10, 20, 6], 25), None, "past EOF");
         assert_eq!(checked_byte_range(&[0, 21, 20, 5], 25), None, "overlap");
@@ -1163,9 +1170,17 @@ mod byte_range_tests {
     fn a_gap_of_the_hex_digits_alone_covers_the_file_too() {
         // `prepare_signature` leaves the `<` and `>` inside the signed spans.
         let (pdf, [s1, l1, s2, l2]) = doc("%PDF-1.7 ", "3003", " %%EOF");
-        assert!(covers_whole_file(&pdf, [s1, l1 + 1, s2 - 1, l2 + 1], &[0x30, 0x03]));
+        assert!(covers_whole_file(
+            &pdf,
+            [s1, l1 + 1, s2 - 1, l2 + 1],
+            &[0x30, 0x03]
+        ));
         // One digit short of the string is not it.
-        assert!(!covers_whole_file(&pdf, [s1, l1 + 2, s2 - 1, l2 + 1], &[0x30, 0x03]));
+        assert!(!covers_whole_file(
+            &pdf,
+            [s1, l1 + 2, s2 - 1, l2 + 1],
+            &[0x30, 0x03]
+        ));
     }
 
     #[test]
@@ -1181,8 +1196,16 @@ mod byte_range_tests {
         assert!(!covers_whole_file(&pdf, range, &[0x30, 0x04]));
         // A wider gap that also swallows unsigned bytes after the hex.
         let [s1, l1, s2, l2] = range;
-        assert!(!covers_whole_file(&pdf, [s1, l1, s2 + 2, l2 - 2], &[0x30, 0x03]));
-        assert!(!covers_whole_file(&pdf, [s1, l1 - 2, s2, l2], &[0x30, 0x03]));
+        assert!(!covers_whole_file(
+            &pdf,
+            [s1, l1, s2 + 2, l2 - 2],
+            &[0x30, 0x03]
+        ));
+        assert!(!covers_whole_file(
+            &pdf,
+            [s1, l1 - 2, s2, l2],
+            &[0x30, 0x03]
+        ));
         // A gap somewhere else than right after the /Contents key.
         let other = b"%PDF-1.7 /Other <3003> %%EOF".to_vec();
         let s2 = other.len() - 6;
@@ -1191,9 +1214,13 @@ mod byte_range_tests {
 
     #[test]
     fn a_der_length_wider_than_usize_is_left_whole() {
-        let blob = [0x30, 0x89, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff];
+        let blob = [
+            0x30, 0x89, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+        ];
         assert_eq!(trim_der(&blob), blob.to_vec());
-        let blob = [0x30, 0x88, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00];
+        let blob = [
+            0x30, 0x88, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00,
+        ];
         assert_eq!(trim_der(&blob), blob.to_vec(), "2 + n + l overflows");
     }
 }

@@ -132,6 +132,38 @@ impl Printer<'_> {
         // otherwise a comment adjacent to the opener spuriously gains a blank
         // line above it. The end line is still recorded after the body prints.
         self.record_emitted_line(stmt.span.line_usize());
+        self.print_stmt_within_line_limit(stmt);
+        let end_line = super::printer::source_end_line(self.source, stmt.span);
+        self.record_emitted_line(end_line);
+    }
+
+    /// Print the statement; if a line it produced is over the limit and a
+    /// one-line `{ |x| … }` block was kept in it, print it again with every
+    /// block as `do … end`.
+    ///
+    /// A kept brace block is measured only up to its `}`, and the line can go
+    /// on after it — `.map { |m| … }.filter do |g|`, once a chain written
+    /// over several lines is joined — past the limit `soli lint` enforces.
+    /// `do … end` breaks the line, as every block did before brace blocks
+    /// were kept.
+    fn print_stmt_within_line_limit(&mut self, stmt: &Stmt) {
+        if self.no_brace_blocks || !self.source_of(stmt.span).contains('{') {
+            self.print_stmt_kind(stmt);
+            return;
+        }
+        let end_line = super::printer::source_end_line(self.source, stmt.span);
+        let snapshot = self.snapshot(end_line);
+        let kept_before = self.brace_blocks_kept;
+        self.print_stmt_kind(stmt);
+        if self.brace_blocks_kept > kept_before && self.overflows_since(&snapshot) {
+            self.restore(snapshot);
+            self.no_brace_blocks = true;
+            self.print_stmt_kind(stmt);
+            self.no_brace_blocks = false;
+        }
+    }
+
+    fn print_stmt_kind(&mut self, stmt: &Stmt) {
         match &stmt.kind {
             StmtKind::Expression(expr) => {
                 // At statement position, `fn` is a function declaration and
@@ -347,8 +379,6 @@ impl Printer<'_> {
             }
         }
         self.flush_trailing_comments_on(stmt.span.line_usize());
-        let end_line = super::printer::source_end_line(self.source, stmt.span);
-        self.record_emitted_line(end_line);
     }
 
     /// Decide whether a block-form `if cond ... end` should be rewritten as

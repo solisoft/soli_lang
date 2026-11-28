@@ -1012,6 +1012,9 @@ impl Printer<'_> {
         params: &[crate::ast::Parameter],
         body: &[crate::ast::Stmt],
     ) -> bool {
+        if self.no_brace_blocks {
+            return false;
+        }
         let [stmt] = body else {
             return false;
         };
@@ -1025,7 +1028,7 @@ impl Printer<'_> {
         if !written.starts_with('{') || written.contains('\n') {
             return false;
         }
-        self.try_single_line_within(MAX_LINE_LENGTH, |p| {
+        let kept = self.try_single_line_within(MAX_LINE_LENGTH, |p| {
             p.write(" {");
             if !params.is_empty() {
                 p.write(" |");
@@ -1043,7 +1046,11 @@ impl Printer<'_> {
             p.write(" ");
             p.print_expr(expr);
             p.write(" }");
-        })
+        });
+        if kept {
+            self.brace_blocks_kept += 1;
+        }
+        kept
     }
 
     fn print_arg_list_inner(&mut self, args: &[Argument]) {

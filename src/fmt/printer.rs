@@ -45,6 +45,28 @@ pub struct Printer<'a> {
     /// emitted there falls back to the `&{ ... }` form, which is unambiguous
     /// in every position.
     pub(super) suppress_do_block: bool,
+    /// Set while a statement is printed again because a kept one-line
+    /// `{ |x| … }` block left a line over the limit: every block is then
+    /// `do … end` (see `print_stmt_within_line_limit`).
+    pub(super) no_brace_blocks: bool,
+    /// How many one-line brace blocks have been kept so far.
+    pub(super) brace_blocks_kept: usize,
+}
+
+/// Where the printer stood before a statement, to print it again from there.
+pub(super) struct Snapshot {
+    out_len: usize,
+    indent: usize,
+    at_line_start: bool,
+    column: usize,
+    comment_cursor: usize,
+    last_emitted_line: usize,
+    last_stmt_rewrote_to_postfix: bool,
+    suppress_do_block: bool,
+    brace_blocks_kept: usize,
+    /// The comments the statement can reach, from the cursor through its
+    /// last line: printing one may rewrite it (`soli-lint-disable-line`).
+    comments: Vec<Comment>,
 }
 
 impl<'a> Printer<'a> {
@@ -60,7 +82,63 @@ impl<'a> Printer<'a> {
             last_emitted_line: 0,
             last_stmt_rewrote_to_postfix: false,
             suppress_do_block: false,
+            no_brace_blocks: false,
+            brace_blocks_kept: 0,
         }
+    }
+
+    /// The source text of `span`.
+    pub(super) fn source_of(&self, span: crate::span::Span) -> &'a str {
+        self.source
+            .get(span.start_usize()..span.end_usize())
+            .unwrap_or("")
+    }
+
+    pub(super) fn snapshot(&self, through_line: usize) -> Snapshot {
+        let reachable = self.comments[self.comment_cursor..]
+            .iter()
+            .take_while(|c| c.line <= through_line)
+            .cloned()
+            .collect();
+        Snapshot {
+            out_len: self.out.len(),
+            indent: self.indent,
+            at_line_start: self.at_line_start,
+            column: self.column,
+            comment_cursor: self.comment_cursor,
+            last_emitted_line: self.last_emitted_line,
+            last_stmt_rewrote_to_postfix: self.last_stmt_rewrote_to_postfix,
+            suppress_do_block: self.suppress_do_block,
+            brace_blocks_kept: self.brace_blocks_kept,
+            comments: reachable,
+        }
+    }
+
+    pub(super) fn restore(&mut self, snapshot: Snapshot) {
+        self.out.truncate(snapshot.out_len);
+        self.indent = snapshot.indent;
+        self.at_line_start = snapshot.at_line_start;
+        self.column = snapshot.column;
+        self.comment_cursor = snapshot.comment_cursor;
+        self.last_emitted_line = snapshot.last_emitted_line;
+        self.last_stmt_rewrote_to_postfix = snapshot.last_stmt_rewrote_to_postfix;
+        self.suppress_do_block = snapshot.suppress_do_block;
+        self.brace_blocks_kept = snapshot.brace_blocks_kept;
+        let start = snapshot.comment_cursor;
+        for (offset, comment) in snapshot.comments.into_iter().enumerate() {
+            self.comments[start + offset] = comment;
+        }
+    }
+
+    /// Whether a line printed since `snapshot` — counting the start of the
+    /// line it began on — is longer than [`MAX_LINE_LENGTH`].
+    pub(super) fn overflows_since(&self, snapshot: &Snapshot) -> bool {
+        let line_start = self.out[..snapshot.out_len]
+            .rfind('\n')
+            .map_or(0, |at| at + 1);
+        self.out[line_start..]
+            .lines()
+            .any(|line| line.chars().count() > MAX_LINE_LENGTH)
     }
 
     /// Print with `f`, and keep the output only if it stays on one line;

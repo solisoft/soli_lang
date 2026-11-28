@@ -986,6 +986,21 @@ fn one_line_brace_block_stays_on_one_line() {
 }
 
 #[test]
+fn a_kept_brace_block_never_leaves_a_line_over_the_limit() {
+    // The `soli generate scim` model: a chain written over lines, joined by
+    // the formatter. The first block fits up to its `}`, but the line goes on.
+    let src = "def members\n  ScimMembership.where({\"group_id\": @_key}).all\n    .map { |membership| User.find_by(\"_key\", membership.user_id) }\n    .filter { |user| !user.nil? }\nend\n";
+    let out = format_source(src).expect("format failed");
+    let longest = out.lines().map(|l| l.chars().count()).max().unwrap_or(0);
+    assert!(
+        longest <= super::printer::MAX_LINE_LENGTH,
+        "a line of {longest} columns:\n{out}"
+    );
+    assert_round_trip(src);
+    assert_idempotent(src);
+}
+
+#[test]
 fn a_do_block_or_a_brace_block_over_lines_stays_do_end() {
     // What the author wrote as `do … end` keeps that form, even when short.
     let src = "data.each do |x|\n  print(x)\nend\n";
